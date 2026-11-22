@@ -2,6 +2,7 @@ import { PHYSICS_DT } from '@/config/constants';
 import { InputManager } from '@/input/inputManager';
 import { InputSmoothing } from '@/input/smoothing';
 import { steeringAssist } from '@/input/steeringAssist';
+import { resolveBarriers, resolveBodyGround } from '@/physics/collision';
 import { resetToTrack } from '@/physics/reset';
 import type { CarConfig, DriveInput } from '@/physics/types';
 import { Vehicle } from '@/physics/vehicle';
@@ -36,7 +37,9 @@ export class DriveScene {
     this.vehicle = new Vehicle(cfg, track.query);
     this.progressS = track.data.startS - track.data.spawnBehindStart;
     resetToTrack(this.vehicle, track, this.progressS);
-    this.world = new PhysicsWorld(this.vehicle);
+    this.world = new PhysicsWorld(this.vehicle,
+      vehicle => resolveBarriers(vehicle, track),
+      vehicle => resolveBodyGround(vehicle, track.query));
     this.car = new CarView(cfg);
     scene.add(this.car.carRoot);
     this.camera = new CameraRig(this.display.camera, track, heightAt);

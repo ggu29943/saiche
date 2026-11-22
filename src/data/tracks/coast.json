@@ -1,0 +1,316 @@
+{
+ "id": "coast",
+ "name": "灯塔海岸",
+ "description": "黄昏的海岸公路，护栏贴身。先下到海边，再爬上悬崖顶，翻过山脊回到起点。",
+ "runoffWidth": 5,
+ "runoffSurface": "grass",
+ "runoffOverrides": [
+  {
+   "from": 1550,
+   "to": 1660,
+   "surface": "gravel"
+  }
+ ],
+ "barrier": {
+  "type": "guardrail",
+  "height": 0.75
+ },
+ "startS": 40.0,
+ "spawnBehindStart": 6.0,
+ "sectorFractions": [
+  0.0,
+  0.3333,
+  0.6667
+ ],
+ "environment": {
+  "hdri": "assets/env/coast_sunset.hdr",
+  "sunDirection": [
+   -0.8117,
+   0.1725,
+   0.558
+  ],
+  "sunColor": "#FFB27A",
+  "sunIntensity": 2.6,
+  "ambientEnvIntensity": 0.9,
+  "exposure": 0.9,
+  "fogColor": "#E9B48A",
+  "fogNear": 300,
+  "fogFar": 2600,
+  "sea": {
+   "level": 0.0,
+   "color": "#1B4A5E"
+  },
+  "skyFallback": {
+   "turbidity": 8,
+   "rayleigh": 2.5,
+   "mieCoefficient": 0.006,
+   "mieDirectionalG": 0.85
+  }
+ },
+ "terrain": {
+  "size": 3200,
+  "farField": {
+   "type": "coast",
+   "base": 0.0,
+   "amplitude": 8.0,
+   "frequency": 0.004,
+   "octaves": 4,
+   "coastZ": -520,
+   "coastSlope": 0.25,
+   "minHeight": -15,
+   "maxHeight": 60
+  },
+  "vergeWidth": 12.0,
+  "vergeDrop": 1.5,
+  "blendDistance": 110.0
+ },
+ "scenery": {
+  "seed": 19870614,
+  "trees": {
+   "density": 0.25,
+   "minFromBarrier": 8,
+   "maxFromBarrier": 220,
+   "spacing": 11.0,
+   "models": [
+    "tree_a",
+    "tree_c"
+   ]
+  },
+  "rocks": {
+   "density": 0.12,
+   "minFromBarrier": 4,
+   "maxFromBarrier": 200,
+   "spacing": 12.0,
+   "models": [
+    "rock_a",
+    "rock_b"
+   ]
+  }
+ },
+ "props": [
+  {
+   "model": "start_gantry",
+   "s": 40.0,
+   "d": 0.0,
+   "yawOffsetDeg": 0
+  },
+  {
+   "model": "lighthouse",
+   "x": 60.0,
+   "z": -495.0,
+   "yawDeg": 0
+  }
+ ],
+ "controlPoints": [
+  {
+   "x": 0,
+   "y": 20.0,
+   "z": 0,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 180,
+   "y": 20.0,
+   "z": 0,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 320,
+   "y": 18.0,
+   "z": -10,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": 420,
+   "y": 15.0,
+   "z": -60,
+   "halfWidth": 5,
+   "bankDeg": 4
+  },
+  {
+   "x": 470,
+   "y": 12.0,
+   "z": -150,
+   "halfWidth": 5,
+   "bankDeg": 5
+  },
+  {
+   "x": 460,
+   "y": 10.0,
+   "z": -260,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": 400,
+   "y": 8.0,
+   "z": -330,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": 300,
+   "y": 6.0,
+   "z": -350,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": 200,
+   "y": 5.0,
+   "z": -320,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": 120,
+   "y": 4.0,
+   "z": -360,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": 40,
+   "y": 4.0,
+   "z": -420,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -60,
+   "y": 5.0,
+   "z": -430,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -160,
+   "y": 7.0,
+   "z": -400,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -230,
+   "y": 9.0,
+   "z": -440,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -260,
+   "y": 12.0,
+   "z": -520,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -300,
+   "y": 14.0,
+   "z": -560,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -350,
+   "y": 16.0,
+   "z": -540,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -360,
+   "y": 18.0,
+   "z": -480,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -330,
+   "y": 21.0,
+   "z": -400,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -330,
+   "y": 25.0,
+   "z": -300,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -380,
+   "y": 29.0,
+   "z": -220,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -470,
+   "y": 32.0,
+   "z": -180,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -540,
+   "y": 34.0,
+   "z": -120,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -540,
+   "y": 35.0,
+   "z": -30,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -480,
+   "y": 33.0,
+   "z": 40,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -380,
+   "y": 30.0,
+   "z": 60,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -300,
+   "y": 27.0,
+   "z": 30,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -220,
+   "y": 24.0,
+   "z": 40,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -150,
+   "y": 22.0,
+   "z": 20,
+   "halfWidth": 5,
+   "bankDeg": 0
+  },
+  {
+   "x": -80,
+   "y": 21.0,
+   "z": 0,
+   "halfWidth": 6,
+   "bankDeg": 0
+  }
+ ]
+}

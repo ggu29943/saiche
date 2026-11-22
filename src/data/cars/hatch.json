@@ -1,0 +1,207 @@
+{
+  "id": "hatch",
+  "name": "雨燕 GTi",
+  "description": "前驱热掀背。灵活、宽容，适合新手。",
+  "mass": 1250,
+  "inertia": {
+    "x": 1820.0,
+    "y": 1960.0,
+    "z": 470.0
+  },
+  "cgHeight": 0.52,
+  "wheels": [
+    {
+      "id": "FL",
+      "axle": "front",
+      "side": "left",
+      "mount": [
+        0.77,
+        0.009,
+        0.988
+      ]
+    },
+    {
+      "id": "FR",
+      "axle": "front",
+      "side": "right",
+      "mount": [
+        -0.77,
+        0.009,
+        0.988
+      ]
+    },
+    {
+      "id": "RL",
+      "axle": "rear",
+      "side": "left",
+      "mount": [
+        0.77,
+        0.0261,
+        -1.612
+      ]
+    },
+    {
+      "id": "RR",
+      "axle": "rear",
+      "side": "right",
+      "mount": [
+        -0.77,
+        0.0261,
+        -1.612
+      ]
+    }
+  ],
+  "wheel": {
+    "radius": 0.315,
+    "width": 0.235,
+    "inertia": 1.0
+  },
+  "suspension": {
+    "front": {
+      "restLength": 0.3,
+      "maxCompression": 0.12,
+      "stiffness": 44200.0,
+      "damperBump": 2480.0,
+      "damperRebound": 4550.0,
+      "antiRollStiffness": 18000
+    },
+    "rear": {
+      "restLength": 0.3,
+      "maxCompression": 0.12,
+      "stiffness": 33800.0,
+      "damperBump": 1700.0,
+      "damperRebound": 3120.0,
+      "antiRollStiffness": 9000
+    },
+    "bumpStopStiffness": 150000
+  },
+  "steering": {
+    "maxAngleDeg": 34
+  },
+  "tire": {
+    "lon": {
+      "B": 14,
+      "C": 1.5,
+      "E": -0.2
+    },
+    "lat": {
+      "B": 15,
+      "C": 1.4,
+      "E": 0.0
+    },
+    "mu": 1.05,
+    "loadRef": 3066,
+    "loadSensitivity": -0.1,
+    "relaxLon": 0.1,
+    "relaxLat": 0.3,
+    "rollingResistance": 0.012
+  },
+  "engine": {
+    "idleRpm": 900,
+    "redlineRpm": 6800,
+    "limiterRpm": 7000,
+    "launchRpm": 2500,
+    "inertia": 0.18,
+    "engineBrakeNmPer1000Rpm": 6.5,
+    "torqueCurve": [
+      [
+        1000,
+        200
+      ],
+      [
+        1500,
+        260
+      ],
+      [
+        2000,
+        340
+      ],
+      [
+        2500,
+        370
+      ],
+      [
+        4000,
+        370
+      ],
+      [
+        5000,
+        360
+      ],
+      [
+        5500,
+        340
+      ],
+      [
+        6000,
+        315
+      ],
+      [
+        6500,
+        285
+      ],
+      [
+        7000,
+        250
+      ]
+    ]
+  },
+  "gearbox": {
+    "ratios": [
+      3.46,
+      2.05,
+      1.37,
+      1.03,
+      0.84,
+      0.7
+    ],
+    "reverse": 3.2,
+    "final": 4.06,
+    "efficiency": 0.88,
+    "shiftTime": 0.15,
+    "autoUpRpm": 6500,
+    "autoDownRpm": 3000,
+    "minShiftInterval": 0.6
+  },
+  "drivetrain": {
+    "type": "FWD",
+    "frontSplit": 0,
+    "diffFront": {
+      "type": "lsd",
+      "preloadNm": 40,
+      "lockRatio": 0.25,
+      "lockGain": 60
+    },
+    "diffRear": {
+      "type": "open",
+      "preloadNm": 0,
+      "lockRatio": 0,
+      "lockGain": 0
+    },
+    "diffCenter": {
+      "type": "open",
+      "preloadNm": 0,
+      "lockRatio": 0,
+      "lockGain": 0
+    }
+  },
+  "brakes": {
+    "maxTorque": 5000,
+    "frontBias": 0.68,
+    "handbrakeTorque": 2600
+  },
+  "aero": {
+    "cdA": 0.73,
+    "clAFront": 0.05,
+    "clARear": 0.05
+  },
+  "visual": {
+    "model": "assets/cars/hatch/hatch.glb",
+    "paints": [
+      "#C8102E",
+      "#F2F2F2",
+      "#1C1C1E",
+      "#1F5FAD"
+    ]
+  }
+}

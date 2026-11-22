@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "cars": {
+    "hatch": {
+      "model": "cars/hatch/hatch.glb",
+      "engine": [
+        {
+          "file": "cars/hatch/audio/engine_on_low.wav",
+          "rpm": 2000,
+          "load": "on"
+        },
+        {
+          "file": "cars/hatch/audio/engine_on_mid.wav",
+          "rpm": 4000,
+          "load": "on"
+        },
+        {
+          "file": "cars/hatch/audio/engine_on_high.wav",
+          "rpm": 6500,
+          "load": "on"
+        },
+        {
+          "file": "cars/hatch/audio/engine_off_mid.wav",
+          "rpm": 4000,
+          "load": "off"
+        }
+      ]
+    },
+    "coupe": {
+      "model": "cars/coupe/coupe.glb",
+      "engine": [
+        {
+          "file": "cars/coupe/audio/engine_on_low.wav",
+          "rpm": 2000,
+          "load": "on"
+        },
+        {
+          "file": "cars/coupe/audio/engine_on_mid.wav",
+          "rpm": 4000,
+          "load": "on"
+        },
+        {
+          "file": "cars/coupe/audio/engine_on_high.wav",
+          "rpm": 6800,
+          "load": "on"
+        },
+        {
+          "file": "cars/coupe/audio/engine_off_mid.wav",
+          "rpm": 4000,
+          "load": "off"
+        }
+      ]
+    },
+    "rally": {
+      "model": "cars/rally/rally.glb",
+      "engine": [
+        {
+          "file": "cars/rally/audio/engine_on_low.wav",
+          "rpm": 2000,
+          "load": "on"
+        },
+        {
+          "file": "cars/rally/audio/engine_on_mid.wav",
+          "rpm": 4000,
+          "load": "on"
+        },
+        {
+          "file": "cars/rally/audio/engine_on_high.wav",
+          "rpm": 6500,
+          "load": "on"
+        },
+        {
+          "file": "cars/rally/audio/engine_off_mid.wav",
+          "rpm": 4000,
+          "load": "off"
+        }
+      ]
+    }
+  },
+  "env": {
+    "valley": {
+      "hdri": "env/valley_sky.hdr",
+      "sunU": 0.25
+    },
+    "coast": {
+      "hdri": "env/coast_sunset.hdr",
+      "sunU": 0.25,
+      "waterNormals": "env/waternormals.jpg"
+    }
+  },
+  "track": {
+    "asphalt": {
+      "albedo": "track/asphalt_albedo.jpg",
+      "normal": "track/asphalt_normal.jpg",
+      "rough": "track/asphalt_rough.jpg"
+    },
+    "grass": {
+      "albedo": "track/grass_albedo.jpg",
+      "normal": "track/grass_normal.jpg"
+    },
+    "gravel": {
+      "albedo": "track/gravel_albedo.jpg",
+      "normal": "track/gravel_normal.jpg"
+    },
+    "concrete": {
+      "albedo": "track/concrete_albedo.jpg",
+      "normal": "track/concrete_normal.jpg",
+      "rough": "track/concrete_rough.jpg"
+    },
+    "rock": {
+      "albedo": "track/rock_albedo.jpg"
+    }
+  },
+  "scenery": {
+    "tree_a": "scenery/tree_a.glb",
+    "tree_b": "scenery/tree_b.glb",
+    "tree_c": "scenery/tree_c.glb",
+    "rock_a": "scenery/rock_a.glb",
+    "rock_b": "scenery/rock_b.glb",
+    "start_gantry": "scenery/start_gantry.glb",
+    "grandstand": "scenery/grandstand.glb",
+    "lighthouse": "scenery/lighthouse.glb"
+  },
+  "audio": {
+    "tyre_skid": "audio/tyre_skid.wav",
+    "surface_gravel": "audio/surface_gravel.wav",
+    "wind": "audio/wind.wav",
+    "impact_light": "audio/impact_light.wav",
+    "impact_heavy": "audio/impact_heavy.wav",
+    "shift": "audio/shift.wav"
+  }
+}

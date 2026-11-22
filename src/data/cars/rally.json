@@ -1,0 +1,211 @@
+{
+  "id": "rally",
+  "name": "雷隼 AWD",
+  "description": "四驱拉力血统轿车。抓地最稳，出弯最快。",
+  "mass": 1480,
+  "inertia": {
+    "x": 2180.0,
+    "y": 2340.0,
+    "z": 560.0
+  },
+  "cgHeight": 0.55,
+  "wheels": [
+    {
+      "id": "FL",
+      "axle": "front",
+      "side": "left",
+      "mount": [
+        0.78,
+        -0.022,
+        1.1528
+      ]
+    },
+    {
+      "id": "FR",
+      "axle": "front",
+      "side": "right",
+      "mount": [
+        -0.78,
+        -0.022,
+        1.1528
+      ]
+    },
+    {
+      "id": "RL",
+      "axle": "rear",
+      "side": "left",
+      "mount": [
+        0.78,
+        -0.0061,
+        -1.4672
+      ]
+    },
+    {
+      "id": "RR",
+      "axle": "rear",
+      "side": "right",
+      "mount": [
+        -0.78,
+        -0.0061,
+        -1.4672
+      ]
+    }
+  ],
+  "wheel": {
+    "radius": 0.325,
+    "width": 0.255,
+    "inertia": 1.2
+  },
+  "suspension": {
+    "front": {
+      "restLength": 0.3,
+      "maxCompression": 0.12,
+      "stiffness": 41900.0,
+      "damperBump": 2500.0,
+      "damperRebound": 4580.0,
+      "antiRollStiffness": 18000
+    },
+    "rear": {
+      "restLength": 0.3,
+      "maxCompression": 0.12,
+      "stiffness": 39400.0,
+      "damperBump": 2150.0,
+      "damperRebound": 3940.0,
+      "antiRollStiffness": 12000
+    },
+    "bumpStopStiffness": 150000
+  },
+  "steering": {
+    "maxAngleDeg": 33
+  },
+  "tire": {
+    "lon": {
+      "B": 14,
+      "C": 1.5,
+      "E": -0.2
+    },
+    "lat": {
+      "B": 15,
+      "C": 1.4,
+      "E": 0.0
+    },
+    "mu": 1.05,
+    "loadRef": 3630,
+    "loadSensitivity": -0.1,
+    "relaxLon": 0.1,
+    "relaxLat": 0.3,
+    "rollingResistance": 0.012
+  },
+  "engine": {
+    "idleRpm": 900,
+    "redlineRpm": 7000,
+    "limiterRpm": 7200,
+    "launchRpm": 2500,
+    "inertia": 0.18,
+    "engineBrakeNmPer1000Rpm": 7.0,
+    "torqueCurve": [
+      [
+        1000,
+        230
+      ],
+      [
+        1500,
+        320
+      ],
+      [
+        2000,
+        400
+      ],
+      [
+        2500,
+        430
+      ],
+      [
+        3500,
+        430
+      ],
+      [
+        4500,
+        420
+      ],
+      [
+        5500,
+        390
+      ],
+      [
+        6000,
+        365
+      ],
+      [
+        6500,
+        330
+      ],
+      [
+        7000,
+        295
+      ],
+      [
+        7500,
+        260
+      ]
+    ]
+  },
+  "gearbox": {
+    "ratios": [
+      3.5,
+      2.2,
+      1.6,
+      1.25,
+      1.02,
+      0.84
+    ],
+    "reverse": 3.3,
+    "final": 4.11,
+    "efficiency": 0.88,
+    "shiftTime": 0.15,
+    "autoUpRpm": 6700,
+    "autoDownRpm": 3000,
+    "minShiftInterval": 0.6
+  },
+  "drivetrain": {
+    "type": "AWD",
+    "frontSplit": 0.4,
+    "diffFront": {
+      "type": "open",
+      "preloadNm": 0,
+      "lockRatio": 0,
+      "lockGain": 0
+    },
+    "diffRear": {
+      "type": "lsd",
+      "preloadNm": 40,
+      "lockRatio": 0.25,
+      "lockGain": 60
+    },
+    "diffCenter": {
+      "type": "lsd",
+      "preloadNm": 60,
+      "lockRatio": 0.3,
+      "lockGain": 60
+    }
+  },
+  "brakes": {
+    "maxTorque": 5500,
+    "frontBias": 0.64,
+    "handbrakeTorque": 2800
+  },
+  "aero": {
+    "cdA": 0.79,
+    "clAFront": 0.1,
+    "clARear": 0.2
+  },
+  "visual": {
+    "model": "assets/cars/rally/rally.glb",
+    "paints": [
+      "#1D4E89",
+      "#F4F4F4",
+      "#2E7D32",
+      "#111111"
+    ]
+  }
+}

@@ -1,0 +1,333 @@
+{
+ "id": "valley",
+ "name": "云杉谷环线",
+ "description": "山谷里的晨间赛道。长直道接上坡发卡弯，后半程连续 S 弯下山。",
+ "runoffWidth": 8,
+ "runoffSurface": "grass",
+ "runoffOverrides": [
+  {
+   "from": 450,
+   "to": 505,
+   "surface": "gravel"
+  },
+  {
+   "from": 780,
+   "to": 905,
+   "surface": "gravel"
+  },
+  {
+   "from": 2070,
+   "to": 2120,
+   "surface": "gravel"
+  }
+ ],
+ "barrier": {
+  "type": "wall",
+  "height": 1.0
+ },
+ "startS": 60.0,
+ "spawnBehindStart": 6.0,
+ "sectorFractions": [
+  0.0,
+  0.3333,
+  0.6667
+ ],
+ "environment": {
+  "hdri": "assets/env/valley_sky.hdr",
+  "sunDirection": [
+   0.4508,
+   0.6211,
+   -0.6411
+  ],
+  "sunColor": "#FFF1DC",
+  "sunIntensity": 3.2,
+  "ambientEnvIntensity": 1.0,
+  "exposure": 1.0,
+  "fogColor": "#C9D6E3",
+  "fogNear": 350,
+  "fogFar": 2200,
+  "sea": null,
+  "skyFallback": {
+   "turbidity": 4,
+   "rayleigh": 1.2,
+   "mieCoefficient": 0.004,
+   "mieDirectionalG": 0.8
+  }
+ },
+ "terrain": {
+  "size": 3200,
+  "farField": {
+   "type": "hills",
+   "base": 0.0,
+   "amplitude": 45.0,
+   "frequency": 0.0025,
+   "octaves": 5
+  },
+  "vergeWidth": 12.0,
+  "vergeDrop": 1.5,
+  "blendDistance": 110.0
+ },
+ "scenery": {
+  "seed": 20261121,
+  "trees": {
+   "density": 0.55,
+   "minFromBarrier": 8,
+   "maxFromBarrier": 260,
+   "spacing": 9.0,
+   "models": [
+    "tree_a",
+    "tree_b",
+    "tree_c"
+   ]
+  },
+  "rocks": {
+   "density": 0.05,
+   "minFromBarrier": 5,
+   "maxFromBarrier": 200,
+   "spacing": 15.0,
+   "models": [
+    "rock_a",
+    "rock_b"
+   ]
+  }
+ },
+ "props": [
+  {
+   "model": "start_gantry",
+   "s": 60.0,
+   "d": 0.0,
+   "yawOffsetDeg": 0
+  },
+  {
+   "model": "grandstand",
+   "s": 110.0,
+   "d": 22.0,
+   "yawOffsetDeg": 90
+  },
+  {
+   "model": "grandstand",
+   "s": 170.0,
+   "d": 22.0,
+   "yawOffsetDeg": 90
+  }
+ ],
+ "controlPoints": [
+  {
+   "x": 0,
+   "y": 0.0,
+   "z": 0,
+   "halfWidth": 7,
+   "bankDeg": 0
+  },
+  {
+   "x": 220,
+   "y": 0.0,
+   "z": 0,
+   "halfWidth": 7,
+   "bankDeg": 0
+  },
+  {
+   "x": 430,
+   "y": 1.6,
+   "z": 0,
+   "halfWidth": 7,
+   "bankDeg": 0
+  },
+  {
+   "x": 475,
+   "y": 3.2,
+   "z": 12,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 495,
+   "y": 4.8,
+   "z": 55,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 500,
+   "y": 11.2,
+   "z": 180,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 505,
+   "y": 17.6,
+   "z": 290,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 490,
+   "y": 19.2,
+   "z": 330,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 460,
+   "y": 20.0,
+   "z": 345,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 430,
+   "y": 20.0,
+   "z": 330,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 418,
+   "y": 19.2,
+   "z": 295,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 400,
+   "y": 17.6,
+   "z": 230,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 360,
+   "y": 16.0,
+   "z": 190,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 300,
+   "y": 16.0,
+   "z": 200,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 250,
+   "y": 17.6,
+   "z": 250,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 240,
+   "y": 20.8,
+   "z": 330,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 210,
+   "y": 25.6,
+   "z": 420,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 150,
+   "y": 28.8,
+   "z": 470,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": 60,
+   "y": 30.4,
+   "z": 480,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -60,
+   "y": 27.2,
+   "z": 460,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -180,
+   "y": 24.0,
+   "z": 470,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -280,
+   "y": 20.8,
+   "z": 440,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -330,
+   "y": 17.6,
+   "z": 370,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -320,
+   "y": 14.4,
+   "z": 280,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -290,
+   "y": 12.8,
+   "z": 240,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -300,
+   "y": 11.2,
+   "z": 190,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -350,
+   "y": 8.0,
+   "z": 140,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -360,
+   "y": 4.8,
+   "z": 70,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -320,
+   "y": 1.6,
+   "z": 20,
+   "halfWidth": 6,
+   "bankDeg": 0
+  },
+  {
+   "x": -230,
+   "y": 0.0,
+   "z": 0,
+   "halfWidth": 7,
+   "bankDeg": 0
+  },
+  {
+   "x": -110,
+   "y": 0.0,
+   "z": 0,
+   "halfWidth": 7,
+   "bankDeg": 0
+  }
+ ]
+}

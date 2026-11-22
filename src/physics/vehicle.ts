@@ -1,10 +1,10 @@
-import { PHYSICS_DT } from '@/config/constants';
-import { qFromYaw, qRot, type Q } from '@/math/quat';
+import { AIR_DENSITY, GRAVITY, PHYSICS_DT } from '@/config/constants';
+import { qFromYaw, qInvRot, qMul, qNorm, qRot, type Q } from '@/math/quat';
 import { add, sub, mul, dot, cross, norm, type V3 } from '@/math/vec3';
-import { clamp } from '@/math/scalar';
+import { clamp, pmod, sign } from '@/math/scalar';
 import { torqueCurve, diffSplit } from './engine';
-import { flatGround } from './surfaces';
-import { mfPeakX } from './tyre';
+import { flatGround, SURFACES } from './surfaces';
+import { mfPeakX, tyreForces } from './tyre';
 import type { CarConfig, DriveInput, GroundFn, VehicleState, WheelState } from './types';
 
 export class Vehicle implements VehicleState {
@@ -253,6 +253,67 @@ export class Vehicle implements VehicleState {
         this.tcsScale = Math.min(this.tcsScale, 0.6);
       }
     }
-    // TODO T11
+    // 8. Relaxation of contact patch slip, tyre forces, and wheel spin.
+    const { radius } = c.wheel, tire = c.tire;
+    let totalForce: V3 = [0, -c.mass * GRAVITY, 0];
+    let totalTorque: V3 = [0, 0, 0];
+    for (const [i, w] of this.wheels.entries()) {
+      const wheelInertia = c.wheel.inertia + (driven.includes(i) ? reflectedInertia : 0);
+      let freeTorque: number;
+      if (w.contact) {
+        const { vx, vy } = w;
+        w.kappa = (w.kappa + dt * (w.omega * radius - vx) / tire.relaxLon) / (1 + dt * Math.abs(vx) / tire.relaxLon);
+        w.beta = (w.beta + dt * (-vy) / tire.relaxLat) / (1 + dt * Math.abs(vx) / tire.relaxLat);
+        w.kappa = clamp(w.kappa, -1.5, 1.5);
+        w.beta = clamp(w.beta, -1.5, 1.5);
+        const material = SURFACES[w.surface];
+        [w.Fx, w.Fy] = tyreForces(w.kappa, Math.atan(w.beta), w.Fz, tire, material.mu, this.kp, this.ap);
+        const rolling = (tire.rollingResistance + material.rolling) * w.Fz;
+        freeTorque = driveTorque[i] - w.Fx * radius - rolling * radius * sign(w.omega);
+        let force = add(add(mul(up, w.Fz), mul(w.f, w.Fx)), mul(w.l, w.Fy));
+        force = add(force, mul(w.f, -rolling * clamp(vx / 0.5, -1, 1)));
+        totalForce = add(totalForce, force);
+        totalTorque = add(totalTorque, cross(w.r, force));
+      } else {
+        w.kappa = w.beta = w.Fx = w.Fy = 0;
+        freeTorque = driveTorque[i];
+      }
+      let omega = w.omega + dt * freeTorque / wheelInertia;
+      const maxBrake = brakeTorque[i] * dt / wheelInertia;
+      if (Math.abs(omega) <= maxBrake) omega = 0;
+      else omega -= sign(omega) * maxBrake;
+      w.omega = clamp(omega, -400, 400);
+      w.rot = pmod(w.rot + w.omega * dt, 2 * Math.PI);
+    }
+
+    // 9. Drag and front/rear downforce.
+    const v2 = dot(this.vel, this.vel);
+    if (v2 > 1e-6) totalForce = add(totalForce, mul(norm(this.vel), -0.5 * AIR_DENSITY * c.aero.cdA * v2));
+    const vf = Math.max(0, speed);
+    const frontDown = 0.5 * AIR_DENSITY * c.aero.clAFront * vf * vf;
+    const rearDown = 0.5 * AIR_DENSITY * c.aero.clARear * vf * vf;
+    const pf = qRot(q, [0, 0, c.wheels[0].mount[2]]);
+    const pr = qRot(q, [0, 0, c.wheels[2].mount[2]]);
+    for (const [point, downforce] of [[pf, frontDown], [pr, rearDown]] as const) {
+      const force = mul(up, -downforce);
+      totalForce = add(totalForce, force);
+      totalTorque = add(totalTorque, cross(point, force));
+    }
+
+    // 10. Semi-implicit Euler; resolve the gyroscopic term in body space.
+    this.vel = add(this.vel, mul(totalForce, dt / c.mass));
+    const I = c.inertia;
+    let wb = qInvRot(q, this.angvel);
+    const tb = qInvRot(q, totalTorque);
+    const gyro = cross(wb, [I.x * wb[0], I.y * wb[1], I.z * wb[2]]);
+    wb = [wb[0] + dt * (tb[0] - gyro[0]) / I.x,
+      wb[1] + dt * (tb[1] - gyro[1]) / I.y,
+      wb[2] + dt * (tb[2] - gyro[2]) / I.z];
+    this.angvel = qRot(q, wb);
+    this.pos = add(this.pos, mul(this.vel, dt));
+    const dq = qMul([0, ...this.angvel], q);
+    this.q = qNorm([q[0] + 0.5 * dt * dq[0], q[1] + 0.5 * dt * dq[1],
+      q[2] + 0.5 * dt * dq[2], q[3] + 0.5 * dt * dq[3]]);
+    this.time += dt;
   }
 }

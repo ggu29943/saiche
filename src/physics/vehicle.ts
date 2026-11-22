@@ -1,6 +1,8 @@
 import { PHYSICS_DT } from '@/config/constants';
 import { qFromYaw, qRot, type Q } from '@/math/quat';
 import { add, sub, mul, dot, cross, norm, type V3 } from '@/math/vec3';
+import { clamp } from '@/math/scalar';
+import { torqueCurve, diffSplit } from './engine';
 import { flatGround } from './surfaces';
 import { mfPeakX } from './tyre';
 import type { CarConfig, DriveInput, GroundFn, VehicleState, WheelState } from './types';
@@ -140,7 +142,117 @@ export class Vehicle implements VehicleState {
       w.vx = dot(velocity, w.f);
       w.vy = dot(velocity, w.l);
     }
-    // TODO T10
+    // 5. Gearbox, engine and traction control.
+    const { engine, gearbox, drivetrain } = c;
+    const assists = inp.assists;
+    this.sinceShift += dt;
+    if (this.shiftTimer > 0) this.shiftTimer = Math.max(0, this.shiftTimer - dt);
+    const driven = this.driven();
+    const drivenOmega = driven.reduce((sum, i) => sum + this.wheels[i].omega, 0) / driven.length;
+    let { throttle, brake } = inp;
+    if (assists.autoGear) {
+      if (this.gear > 0 && speed < 0.5 && brake > 0.5 && throttle < 0.05) {
+        this.revTimer += dt;
+        if (this.revTimer > 0.3) {
+          this.gear = -1;
+          this.revTimer = 0;
+        }
+      } else if (this.gear < 0 && speed > -0.5 && throttle > 0.5 && brake < 0.05) {
+        this.revTimer += dt;
+        if (this.revTimer > 0.3) {
+          this.gear = 1;
+          this.revTimer = 0;
+        }
+      } else {
+        this.revTimer = 0;
+      }
+      if (this.gear < 0) [throttle, brake] = [inp.brake, inp.throttle];
+    }
+    const ratio = this.totalRatio(this.gear);
+    const wheelRpm = Math.abs(drivenOmega * ratio) * 60 / (2 * Math.PI);
+    this.rpm = Math.min(Math.max(wheelRpm, engine.idleRpm + throttle * (engine.launchRpm - engine.idleRpm)), engine.limiterRpm + 200);
+    if (assists.autoGear && this.gear > 0 && this.shiftTimer === 0 && this.sinceShift >= gearbox.minShiftInterval) {
+      if (wheelRpm > gearbox.autoUpRpm && this.gear < gearbox.ratios.length) {
+        this.gear++;
+        this.shiftTimer = gearbox.shiftTime;
+        this.sinceShift = 0;
+      } else if (wheelRpm < gearbox.autoDownRpm && this.gear > 1) {
+        this.gear--;
+        this.shiftTimer = gearbox.shiftTime;
+        this.sinceShift = 0;
+      }
+    }
+    if (!assists.autoGear && inp.shift !== 0 && this.shiftTimer === 0) {
+      let next = clamp(this.gear + inp.shift, -1, gearbox.ratios.length);
+      if (next < 0 && speed > 2) next = 0;
+      if (next !== this.gear) {
+        this.gear = next;
+        this.shiftTimer = gearbox.shiftTime;
+        this.sinceShift = 0;
+      }
+    }
+    if (this.rpm >= engine.limiterRpm) this.limiterCut = true;
+    else if (this.rpm < engine.limiterRpm - 200) this.limiterCut = false;
+    if (assists.tcs) {
+      const maxSlip = Math.max(...driven.map(i => this.wheels[i].kappa));
+      this.tcsScale = maxSlip > 1.2 * this.kp ? Math.max(0.2, this.tcsScale - 6 * dt) : Math.min(1, this.tcsScale + 2 * dt);
+    } else {
+      this.tcsScale = 1;
+    }
+    const effectiveThrottle = this.limiterCut ? 0 : throttle * this.tcsScale;
+    const engineTorque = effectiveThrottle * torqueCurve(engine.torqueCurve, this.rpm)
+      - (1 - effectiveThrottle) * engine.engineBrakeNmPer1000Rpm * this.rpm / 1000;
+    const engaged = this.shiftTimer === 0 && this.gear !== 0;
+    let axleTorque = engaged ? engineTorque * ratio * gearbox.efficiency : 0;
+    if (wheelRpm < engine.idleRpm && effectiveThrottle < 0.01) axleTorque = 0;
+    const reflectedInertia = engaged ? engine.inertia * ratio * ratio / driven.length : 0;
+
+    // 6. Torque distribution at the centre and axle differentials.
+    const driveTorque = [0, 0, 0, 0];
+    const [fl, fr, rl, rr] = this.wheels;
+    if (drivetrain.type === 'FWD') {
+      [driveTorque[0], driveTorque[1]] = diffSplit(axleTorque, fl.omega, fr.omega, drivetrain.diffFront);
+    } else if (drivetrain.type === 'RWD') {
+      [driveTorque[2], driveTorque[3]] = diffSplit(axleTorque, rl.omega, rr.omega, drivetrain.diffRear);
+    } else {
+      const wf = 0.5 * (fl.omega + fr.omega), wr = 0.5 * (rl.omega + rr.omega);
+      let front = axleTorque * drivetrain.frontSplit, rear = axleTorque * (1 - drivetrain.frontSplit);
+      const dc = drivetrain.diffCenter;
+      if (dc.type === 'lsd') {
+        const limit = dc.preloadNm + dc.lockRatio * Math.abs(axleTorque);
+        const transfer = clamp(dc.lockGain * (wr - wf), -limit, limit);
+        front += 0.5 * transfer;
+        rear -= 0.5 * transfer;
+      }
+      [driveTorque[0], driveTorque[1]] = diffSplit(front, fl.omega, fr.omega, drivetrain.diffFront);
+      [driveTorque[2], driveTorque[3]] = diffSplit(rear, rl.omega, rr.omega, drivetrain.diffRear);
+    }
+
+    // 7. Brakes, ABS and stability control.
+    const frontBrake = brake * c.brakes.maxTorque * c.brakes.frontBias / 2;
+    const rearBrake = brake * c.brakes.maxTorque * (1 - c.brakes.frontBias) / 2;
+    const brakeTorque = [frontBrake, frontBrake, rearBrake, rearBrake];
+    const handBrake = inp.handbrake * c.brakes.handbrakeTorque / 2;
+    brakeTorque[2] += handBrake;
+    brakeTorque[3] += handBrake;
+    for (const [i, w] of this.wheels.entries()) {
+      if (assists.abs && brake > 0 && w.contact) {
+        if (w.kappa < -this.kp) w.absScale = Math.max(0.1, w.absScale - 12 * dt);
+        else if (w.kappa > -0.7 * this.kp) w.absScale = Math.min(1, w.absScale + 4 * dt);
+      } else {
+        w.absScale = 1;
+      }
+      if (!(i >= 2 && inp.handbrake > 0)) brakeTorque[i] *= w.absScale;
+    }
+    if (assists.esc && speed > 5) {
+      const yawRate = dot(this.angvel, up);
+      const target = speed * delta / (wheelbase * (1 + 0.0025 * speed * speed));
+      const error = yawRate - target;
+      if (Math.abs(error) > 0.12 && Math.abs(yawRate) > Math.abs(target)) {
+        brakeTorque[yawRate > 0 ? 1 : 0] += Math.min(1500, 4000 * (Math.abs(error) - 0.12));
+        this.tcsScale = Math.min(this.tcsScale, 0.6);
+      }
+    }
     // TODO T11
   }
 }

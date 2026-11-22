@@ -52,7 +52,10 @@ export class CameraRig {
       this.forward.set(Math.sin(yaw), 0, Math.cos(yaw));
       if (Math.hypot(...vehicle.vel) > 3 && speed / 3.6 < -1) this.forward.negate();
       if (this.snap) this.smoothed.copy(this.forward);
-      else this.smoothed.lerp(this.forward, expDecay(6, dt)).normalize();
+      else if (this.smoothed.dot(this.forward) < -0.9999) {
+        // 直线倒车时两个方向恰好相反，归一化线性插值会停在原方向。
+        this.smoothed.applyAxisAngle(up, Math.PI * expDecay(6, dt));
+      } else this.smoothed.lerp(this.forward, expDecay(6, dt)).normalize();
       this.target.copy(position).addScaledVector(this.smoothed, -view.distance);
       this.target.y += view.height;
       camera.position.lerp(this.target, this.snap ? 1 : expDecay(12, dt));

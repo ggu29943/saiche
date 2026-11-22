@@ -1,3 +1,4 @@
+import { buildTerrain } from '@/track/terrain';
 import { buildTrackMeshes } from '@/track/trackMesh';
 import { createMaterials } from './materials';
 import * as THREE from 'three';
@@ -25,7 +26,8 @@ export class TrackViewer {
     sun.position.set(...env.sunDirection);
     this.scene.add(sun);
     const mats = createMaterials(null, 'medium');
-    this.scene.add(buildTrackMeshes(track, mats));
+    const terrain = buildTerrain(track, 'medium', mats);
+    this.scene.add(terrain.mesh, buildTrackMeshes(track, mats));
     for (const side of [-1,1]) {
       const points = track.pos.map((pos,i) => new THREE.Vector3(...pos)
         .addScaledVector(new THREE.Vector3(...track.left[i]), side*track.barrierOffset(i)));

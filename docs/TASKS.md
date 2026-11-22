@@ -355,8 +355,8 @@
 ### T44 比赛控制
 - **依赖**：T43
 - **文件**：`src/game/raceController.ts`（07 §7.7）、`src/ui/screens/countdown.ts`（倒计时灯，07 §7.4 countdown）
-- **做什么**：倒计时 3 s（期间输入强制为刹车，05 §5.9 第 3 步）→ racing；每个物理步调用 `lapTimer.step`、幽灵车录制；处理 lap/sector/invalid 事件；重置、自动重置、逆行检测；圈完成时比较并保存最佳成绩和幽灵车。
-- **验收**：在 valley 跑完一整圈后，`localStorage` 中出现 `apex.best.v1.valley.hatch` 和 `apex.ghost.v1.valley.hatch`。
+- **做什么**：倒计时 3 s（期间每个物理步使用 `{ steer: 0, throttle: 0, brake: 0, handbrake: 1, shift: 0 }`，保留当前 assists，见 05 §5.9 第 3 步）→ racing；每个物理步调用 `lapTimer.step`、幽灵车录制；处理 lap/sector/invalid 事件；重置、自动重置、逆行检测；圈完成时比较并保存最佳成绩和幽灵车。
+- **验收**：在 valley 跑完一整圈后，`localStorage` 中出现 `apex.best.v1.valley.hatch` 和 `apex.ghost.v1.valley.hatch`。自动挡下完整跑完 3 s 倒计时，进入 racing 时断言 `gear === 1`，并且车辆相对倒计时起点的三维位移小于 0.5 m。
 - **提交**：`T44: 比赛控制`
 
 ### T45 HUD 与小地图

@@ -1,0 +1,10 @@
+export const PHYSICS_DT = 1 / 240;
+export const MAX_STEPS_PER_FRAME = 12;
+export const GRAVITY = 9.81;
+export const AIR_DENSITY = 1.225;
+export const GHOST_HZ = 30;
+export const RESET_COOLDOWN_S = 1.5;
+export const AUTO_RESET_UPSIDE_DOWN_S = 3.0;
+export const WRONG_WAY_S = 2.0;
+export const COUNTDOWN_S = 3.0;
+export const STORAGE_PREFIX = 'apex.';

@@ -1,3 +1,5 @@
+import { buildTrackMeshes } from '@/track/trackMesh';
+import { createMaterials } from './materials';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Track } from '@/track/track';
@@ -22,11 +24,13 @@ export class TrackViewer {
     const sun = new THREE.DirectionalLight('#FFFFFF',2);
     sun.position.set(...env.sunDirection);
     this.scene.add(sun);
-    for (const side of [-1,0,1]) {
+    const mats = createMaterials(null, 'medium');
+    this.scene.add(buildTrackMeshes(track, mats));
+    for (const side of [-1,1]) {
       const points = track.pos.map((pos,i) => new THREE.Vector3(...pos)
         .addScaledVector(new THREE.Vector3(...track.left[i]), side*track.barrierOffset(i)));
       this.scene.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points),
-        new THREE.LineBasicMaterial({ color: side === 0 ? '#FFFFFF' : '#FF3030' })));
+        new THREE.LineBasicMaterial({ color: '#FF3030' })));
     }
     this.controls.update();
   }

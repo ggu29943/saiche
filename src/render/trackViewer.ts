@@ -1,3 +1,5 @@
+import { buildProps } from '@/track/props';
+import { buildBarriers } from '@/track/barriers';
 import { buildTerrain } from '@/track/terrain';
 import { buildTrackMeshes } from '@/track/trackMesh';
 import { createMaterials } from './materials';
@@ -28,12 +30,7 @@ export class TrackViewer {
     const mats = createMaterials(null, 'medium');
     const terrain = buildTerrain(track, 'medium', mats);
     this.scene.add(terrain.mesh, buildTrackMeshes(track, mats));
-    for (const side of [-1,1]) {
-      const points = track.pos.map((pos,i) => new THREE.Vector3(...pos)
-        .addScaledVector(new THREE.Vector3(...track.left[i]), side*track.barrierOffset(i)));
-      this.scene.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points),
-        new THREE.LineBasicMaterial({ color: '#FF3030' })));
-    }
+    this.scene.add(buildBarriers(track, mats), buildProps(track, terrain.heightAt));
     this.controls.update();
   }
   draw() { this.display.draw(this.scene); }

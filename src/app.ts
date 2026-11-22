@@ -35,7 +35,7 @@ export class App {
         speedKmh: this.drive?.vehicle.speedKmh() ?? 0,
         rpm: this.drive?.vehicle.rpm ?? 0, gear: this.drive?.vehicle.gear ?? 0,
         pos: this.drive ? [...this.drive.vehicle.pos] : [0,0,0], lap: 0, lapTimeMs: 0, lastLapMs: null, bestLapMs: null,
-        lapInvalid: false, progressS: this.drive?.progressS ?? 0, fps: this.fps, quality: this.drive?.display.quality ?? 'medium',
+        lapInvalid: this.drive?.lapInvalid ?? false, progressS: this.drive?.progressS ?? 0, fps: this.fps, quality: this.drive?.display.quality ?? 'medium',
       }),
       startRace: pending, setInputOverride: input => { if (this.drive) this.drive.override = input; }, skipCountdown: pending,
     };

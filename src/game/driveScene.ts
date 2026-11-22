@@ -1,4 +1,5 @@
-import { PHYSICS_DT } from '@/config/constants';
+import { qRot } from '@/math/quat';
+import { AUTO_RESET_UPSIDE_DOWN_S, PHYSICS_DT, RESET_COOLDOWN_S } from '@/config/constants';
 import { InputManager } from '@/input/inputManager';
 import { InputSmoothing } from '@/input/smoothing';
 import { steeringAssist } from '@/input/steeringAssist';
@@ -29,6 +30,10 @@ export class DriveScene {
   private readonly shifts: (-1 | 1)[] = [];
   override: DriveOverride | null = null;
   progressS: number;
+  lapInvalid = false;
+  private elapsedSteps = 0;
+  private upsideDownSteps = 0;
+  private nextResetStep = 0;
 
   constructor(root: HTMLElement, readonly track: Track, cfg: CarConfig, quality?: Quality) {
     this.display = new RaceRenderer(root, quality, true);
@@ -56,18 +61,37 @@ export class DriveScene {
     };
   };
 
+  private recover() {
+    if (this.elapsedSteps < this.nextResetStep) return;
+    resetToTrack(this.vehicle, this.track, this.progressS);
+    this.world.prev = { pos: [...this.vehicle.pos], q: [...this.vehicle.q] };
+    this.camera.reset();
+    this.shifts.length = 0;
+    this.lapInvalid = true;
+    this.upsideDownSteps = 0;
+    this.nextResetStep = this.elapsedSteps + Math.round(RESET_COOLDOWN_S / PHYSICS_DT);
+  }
+
+  private afterStep = () => {
+    this.elapsedSteps++;
+    const [x, , z] = this.vehicle.pos;
+    this.progressS = this.track.project(x, z)?.s ?? this.progressS;
+    const up = qRot(this.vehicle.q, [0, 1, 0]);
+    this.upsideDownSteps = up[1] < 0.3 ? this.upsideDownSteps + 1 : 0;
+    if (this.upsideDownSteps * PHYSICS_DT >= AUTO_RESET_UPSIDE_DOWN_S) this.recover();
+  };
+
   draw(dt: number) {
     this.input.poll();
     for (const event of this.input.consumeEvents()) {
+      if (event === 'reset') this.recover();
       if (event === 'camera') this.camera.cycle();
       if (event === 'shiftUp') this.shifts.push(1);
       if (event === 'shiftDown') this.shifts.push(-1);
     }
-    this.world.advance(dt, this.physicsInput, () => {});
+    this.world.advance(dt, this.physicsInput, this.afterStep);
     const pose = this.world.interpolated();
     this.car.update(pose, this.vehicle.wheels, this.world.accumulator / PHYSICS_DT);
-    const [x, , z] = this.vehicle.pos;
-    this.progressS = this.track.project(x, z)?.s ?? this.progressS;
     this.camera.update(dt, this.car, this.vehicle);
     this.display.draw(this.scene);
   }

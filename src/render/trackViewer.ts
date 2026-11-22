@@ -1,3 +1,5 @@
+import { placeScenery } from '@/track/scenery';
+import { buildWater } from './water';
 import { buildProps } from '@/track/props';
 import { buildBarriers } from '@/track/barriers';
 import { buildTerrain } from '@/track/terrain';
@@ -31,6 +33,9 @@ export class TrackViewer {
     const terrain = buildTerrain(track, 'medium', mats);
     this.scene.add(terrain.mesh, buildTrackMeshes(track, mats));
     this.scene.add(buildBarriers(track, mats), buildProps(track, terrain.heightAt));
+    this.scene.add(placeScenery(track, terrain.heightAt, 'medium', null));
+    const water = buildWater(env);
+    if (water) this.scene.add(water);
     this.controls.update();
   }
   draw() { this.display.draw(this.scene); }

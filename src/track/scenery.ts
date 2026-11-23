@@ -4,6 +4,7 @@ import { mulberry32 } from '@/math/rng';
 import { smoothstep } from '@/math/scalar';
 import type { Quality } from '@/render/materials';
 import { nearestSample } from './terrain';
+import { loadTreeSprays, makeTreeModel, TreeCluster } from './trees';
 import type { Track } from './track';
 
 type Kind = 'trees' | 'rocks';
@@ -43,17 +44,69 @@ function candidates(track: Track, heightAt: (x: number, z: number) => number, ki
   return result.sort((a, b) => a.fromBarrier - b.fromBarrier);
 }
 
-function placeholderParts(kind: Kind) {
-  if (kind === 'trees') {
-    return [
-      { geometry: new THREE.ConeGeometry(2.2, 7, 7).translate(0, 5.5, 0),
-        material: new THREE.MeshStandardMaterial({ color: '#2F4F2F' }) },
-      { geometry: new THREE.CylinderGeometry(0.25, 0.3, 2, 6).translate(0, 1, 0),
-        material: new THREE.MeshStandardMaterial({ color: '#4B3621' }) },
-    ];
+function instances(name: string, items: Candidate[], seed: number, geometry: THREE.BufferGeometry,
+  material: THREE.Material, center: THREE.Vector3, castShadow: boolean) {
+  const mesh = new THREE.InstancedMesh(geometry, material, items.length);
+  const pose = new THREE.Object3D();
+  items.forEach(({x,y,z}, i) => {
+    pose.position.set(x,y,z).sub(center);
+    pose.rotation.y = hash2(Math.round(x), Math.round(z), seed + 1) * 2 * Math.PI;
+    pose.scale.setScalar(0.8 + 0.4 * hash2(Math.round(x), Math.round(z), seed + 2));
+    pose.updateMatrix();
+    mesh.setMatrixAt(i,pose.matrix);
+  });
+  mesh.name = name;
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = true;
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  mesh.matrixAutoUpdate = false;
+  return mesh;
+}
+
+function addTrees(group: THREE.Group, name: string, items: Candidate[], seed: number, quality: Quality,
+  sprays: ReturnType<typeof loadTreeSprays>) {
+  const model = makeTreeModel(name, sprays);
+  const cells = new Map<string,Candidate[]>();
+  // 规格未指定：按 96 米分区，让镜头只绘制可见林地，并按分区切换远景树。
+  const cellSize = 96;
+  for (const tree of items) {
+    const key = Math.floor(tree.x/cellSize) + ',' + Math.floor(tree.z/cellSize);
+    const cell = cells.get(key);
+    if (cell) cell.push(tree);
+    else cells.set(key,[tree]);
   }
-  return [{ geometry: new THREE.IcosahedronGeometry(1.2, 0).scale(1, 0.6, 1).translate(0, 0.45, 0),
-    material: new THREE.MeshStandardMaterial({ color: '#7A7A72' }) }];
+  for (const batch of cells.values()) {
+    const center = new THREE.Vector3();
+    for (const tree of batch) {
+      center.x += tree.x;
+      center.y += tree.y;
+      center.z += tree.z;
+    }
+    center.divideScalar(batch.length);
+    const near = instances(name,batch,seed,model.canopy,model.solid,center,quality !== 'low');
+    const otherLevel = (geometry: THREE.BufferGeometry, material: THREE.Material, suffix: string) => {
+      const mesh = new THREE.InstancedMesh(geometry,material,0);
+      mesh.name = name + suffix;
+      mesh.instanceMatrix = near.instanceMatrix;
+      mesh.count = near.count;
+      mesh.computeBoundingSphere();
+      mesh.matrixAutoUpdate = false;
+      mesh.castShadow = quality !== 'low';
+      mesh.receiveShadow = true;
+      mesh.visible = false;
+      return mesh;
+    };
+    const far = otherLevel(model.distant,model.leaves,'-distant');
+    const proxy = otherLevel(model.proxy,model.plain,'-proxy');
+    const cluster = new TreeCluster(model,proxy);
+    cluster.position.copy(center);
+    cluster.updateMatrix();
+    cluster.matrixAutoUpdate = false;
+    cluster.addLevel(near,0);
+    cluster.addLevel(far,quality === 'low' ? 85 : 125,0.10);
+    group.add(cluster);
+  }
 }
 
 export function placeScenery(track: Track, heightAt: (x: number, z: number) => number,
@@ -61,31 +114,19 @@ export function placeScenery(track: Track, heightAt: (x: number, z: number) => n
   const group = new THREE.Group();
   group.name = 'scenery';
   const seed = track.data.scenery.seed;
-  const instance = new THREE.Object3D();
+  const sprays = loadTreeSprays();
   for (const kind of ['trees', 'rocks'] as const) {
     const items = candidates(track, heightAt, kind).slice(0, limits[kind][quality]);
     if (kind === 'trees') console.info('[scenery] trees', items.length);
-    for (const model of track.data.scenery[kind].models) {
-      const variant = items.filter(p => p.model === model);
+    for (const name of track.data.scenery[kind].models) {
+      const variant = items.filter(p => p.model === name);
       if (!variant.length) continue;
-      const meshes = placeholderParts(kind).map(({ geometry, material }) =>
-        new THREE.InstancedMesh(geometry, material, variant.length));
-      variant.forEach(({ x, y, z }, i) => {
-        instance.position.set(x, y, z);
-        instance.rotation.y = hash2(Math.round(x), Math.round(z), seed + 1) * 2 * Math.PI;
-        instance.scale.setScalar(0.8 + 0.4 * hash2(Math.round(x), Math.round(z), seed + 2));
-        instance.updateMatrix();
-        for (const mesh of meshes) mesh.setMatrixAt(i, instance.matrix);
-      });
-      for (const mesh of meshes) {
-        mesh.name = model;
-        mesh.castShadow = kind === 'trees' && quality !== 'low';
-        mesh.receiveShadow = true;
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.computeBoundingSphere();
-        mesh.updateMatrix();
-        mesh.matrixAutoUpdate = false;
-        group.add(mesh);
+      if (kind === 'trees') {
+        addTrees(group,name,variant,seed,quality,sprays);
+      } else {
+        const rock = new THREE.IcosahedronGeometry(1.2,0).scale(1,0.6,1).translate(0,0.45,0);
+        const material = new THREE.MeshStandardMaterial({color:'#7A7A72'});
+        group.add(instances(name,variant,seed,rock,material,new THREE.Vector3(),false));
       }
     }
   }

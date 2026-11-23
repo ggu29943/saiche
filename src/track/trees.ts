@@ -6,12 +6,16 @@ type Point = [number, number, number];
 type Patch = [number, number, number, number];
 
 // The spray atlas uses a 2x2 layout: three branch cutouts, then bark.
-// Distant cutouts retain the aspect ratio of the original whole-tree photos.
+// Dimensions pair each near model with its corresponding whole-tree cutout.
 const species = {
-  tree_a: { height: 9.5, aspect: 389/695, foliage: [0.013, 0.515, 0.487, 0.985], green: '#456143' },
-  tree_b: { height: 9.0, aspect: 639/680, foliage: [0.513, 0.515, 0.987, 0.985], green: '#51633F' },
-  tree_c: { height: 7.6, aspect: 885/663, foliage: [0.013, 0.015, 0.487, 0.485], green: '#5B663C' },
-} satisfies Record<string, {height: number; aspect: number; foliage: Patch; green: string}>;
+  tree_a: { height: 9.5, aspect: 389/695, base: 1.8, tiers: 10, boughs: 8, seed: 317,
+    foliage: [0.013, 0.515, 0.487, 0.985], green: '#456143' },
+  tree_b: { height: 11.6, aspect: 412/695, base: 1.45, tiers: 13, boughs: 6, seed: 521,
+    foliage: [0.513, 0.515, 0.987, 0.985], green: '#48695C' },
+  tree_c: { height: 8.8, aspect: 441/695, base: 1.7, tiers: 9, boughs: 7, seed: 733,
+    foliage: [0.013, 0.015, 0.487, 0.485], green: '#4A6244' },
+} satisfies Record<string, { height: number; aspect: number; base: number; tiers: number;
+  boughs: number; seed: number; foliage: Patch; green: string }>;
 const bark: Patch = [0.515, 0.017, 0.985, 0.480];
 type Species = keyof typeof species;
 
@@ -25,11 +29,11 @@ function branch(from: Point, to: Point, base: number, tip: number) {
 
 // Three irregular rings describe the shaded underside, ragged fringe and sunlit
 // top of a spray of needles. Shared vertices keep the canopy rounded in daylight.
-function crown(center: Point, rx: number, rz: number, depth: number, spruce: boolean, rng: () => number) {
-  const sides = spruce ? 10 : 8;
+function crown(center: Point, rx: number, rz: number, depth: number, rng: () => number) {
+  const sides = 10;
   const phase = rng() * Math.PI;
   const points: number[] = [], uv: number[] = [], indices: number[] = [];
-  const ridge = Array.from({length:sides}, (_, i) => 0.80 + 0.20*rng() + (spruce && i%2 === 0 ? 0.24 : 0));
+  const ridge = Array.from({length:sides}, (_, i) => 0.80 + 0.20*rng() + (i%2 === 0 ? 0.24 : 0));
   const ring = (scale: number, rise: number) => {
     for (let i = 0; i < sides; i++) {
       const angle = phase + 2*Math.PI*i/sides;
@@ -39,8 +43,8 @@ function crown(center: Point, rx: number, rz: number, depth: number, spruce: boo
     }
   };
   ring(0.20, -0.33);
-  ring(1.00, spruce ? -0.18 : 0);
-  ring(spruce ? 0.33 : 0.68, 0.60);
+  ring(1.00, -0.18);
+  ring(0.33, 0.60);
   const apex = points.length/3;
   points.push(center[0],center[1]+depth,center[2]);
   uv.push(0.5,1);
@@ -73,45 +77,40 @@ function sprayCard(width: number, height: number, bend: number, slope: number, t
   return geometry;
 }
 
-function addWhorl(add: (g: THREE.BufferGeometry) => void, y: number, radius: number, tier: number, rng: () => number) {
-  const count = 8;
-  const phase = tier*2.39996;
-  for (let i = 0; i < count; i++) {
-    const direction = phase + (i + rng()*0.34)*2*Math.PI/count;
-    const reach = radius*(0.87+0.25*rng());
-    const height = 0.42+radius*0.58;
-    const lift = y + (rng()-0.5)*0.4;
-    // The cutout tapers toward its left side. Mount its right end at
-    // the trunk; two half-sprays fan out from one branch crotch.
-    for (const side of [-1,1]) {
-      const g = sprayCard(reach,height,side*reach*0.19,height*0.12,side*height*0.20);
-      g.translate(-reach*0.55,lift,side*0.08*reach);
-      g.rotateY(direction + side*0.17);
-      add(g);
+function addWhorl(id: Species, add: (g: THREE.BufferGeometry) => void, y: number, radius: number,
+  tier: number, rng: () => number) {
+  const form = species[id];
+  const fir = id === 'tree_b', pine = id === 'tree_c';
+  const phase = tier * 2.39996;
+  for (let i = 0; i < form.boughs; i++) {
+    const direction = phase + (i + rng() * 0.30) * 2 * Math.PI / form.boughs;
+    const reach = radius * (0.88 + rng() * 0.22);
+    const lift = y + (rng() - 0.5) * 0.22;
+    // The fir carries flat shelves. Spruce twigs hang down, stone pine tips
+    // turn up. The cut end of each textured spray is at its right edge.
+    const height = reach * (fir ? 0.32 : pine ? 0.53 : 0.64) + 0.08;
+    for (const side of [-1, 1]) {
+      const spray = sprayCard(reach, height, side * reach * 0.16, 0, side * height * 0.14);
+      spray.translate(-reach * 0.50, 0, 0);
+      spray.rotateX(side * (fir ? 0.76 : 0.38));
+      spray.rotateZ(fir ? -0.08 : pine ? -0.25 : 0.14);
+      spray.rotateY(direction + side * (pine ? 0.23 : 0.17));
+      add(spray.translate(0, lift, 0));
     }
-  }
-}
-
-function addCloud(add: (g: THREE.BufferGeometry) => void, center: Point, radius: number, umbrella: boolean, rng: () => number) {
-  // Each woody stem ends at the centre of this cluster. Attach the cut end
-  // of each spray there and let its needles point out and up into the light.
-  const phase = rng() * 2 * Math.PI;
-  for (let i = 0; i < 12; i++) {
-    const upright = i >= 8;
-    const reach = radius * (upright ? 0.63 : 1.05) * (0.85 + 0.28 * rng());
-    const height = reach * (umbrella ? 0.58 : 0.76);
-    const spray = sprayCard(reach, height, reach * (rng() - 0.5) * 0.29, 0, 0);
-    spray.translate(-reach / 2, 0, 0);
-    spray.rotateX((rng() - 0.5) * 1.55);
-    spray.rotateZ(-(upright ? 0.68 : 0.10) - rng() * (umbrella ? 0.27 : 0.48));
-    spray.rotateY(phase + i * 2.39996);
-    add(spray.translate(...center));
+    if (pine) {
+      const tip = sprayCard(reach * 0.52, height * 0.78, reach * 0.06, 0, 0);
+      tip.translate(-reach * 0.26, 0, 0);
+      tip.rotateZ(-0.74);
+      tip.translate(-reach * 0.63, reach * 0.12, 0);
+      tip.rotateY(direction);
+      add(tip.translate(0, lift, 0));
+    }
   }
 }
 
 function treeGeometry(id: Species, withSprays: boolean) {
   const form = species[id];
-  const rng = mulberry32(id === 'tree_a' ? 317 : id === 'tree_b' ? 521 : 733);
+  const rng = mulberry32(form.seed);
   const parts: THREE.BufferGeometry[] = [];
   const add = (geometry: THREE.BufferGeometry, wood = false) => {
     const color = new THREE.Color(wood ? '#685544' : form.green).multiplyScalar(0.88 + rng()*0.22);
@@ -126,42 +125,29 @@ function treeGeometry(id: Species, withSprays: boolean) {
     parts.push(geometry);
   };
 
-  if (id === 'tree_a') {
-    add(branch([0,0,0],[0,8.9,0],0.20,0.04),true);
+  const { height, base, aspect, tiers } = form;
+  add(branch([0, 0, 0], [0, height, 0], 0.20, 0.012), true);
+  const tierSpacing = (height - base) / tiers;
+  for (let i = 0; i < tiers; i++) {
+    const t = i / tiers;
+    const y = base + t * (height - base);
+    const radius = height * aspect * 0.49 * (1 - t) ** (id === 'tree_c' ? 0.76 : 0.92);
     if (withSprays) {
-      for (let i = 0; i < 10; i++) {
-        const t = i/10;
-        addWhorl(add,1.9+i*0.79,2.55*(1-t)**0.83,i,rng);
-      }
-    } else for (let i = 0; i < 6; i++) {
-      const radius = 2.5 - i*0.39;
-      add(crown([0,1.65+i*1.24,0],radius,radius*0.92,1.65,true,rng));
+      addWhorl(id, add, y, radius, i, rng);
+    } else {
+      // Solid whorls keep the same taper in overhead views and without PNGs.
+      add(crown([0, y, 0], radius, radius * 0.94, tierSpacing * 1.18, rng));
     }
-  } else {
-    const windswept = id === 'tree_c';
-    const fork: Point = [windswept ? -0.36 : 0.05, form.height*(windswept ? 0.42 : 0.48), 0];
-    add(branch([0,0,0],fork,0.23,0.15),true);
-    const leader: Point = [fork[0] + (windswept ? 0.63 : -0.12), form.height * 0.72, 0.18];
-    add(branch(fork, leader, 0.16, 0.075), true);
-    const count = windswept ? 6 : 7;
-    for (let i = 0; i < count; i++) {
-      const t = i/(count-1);
-      const a = i*2.39996;
-      const reach = windswept ? (1-t)*3.35 : (1-t)*2.75;
-      const x = Math.cos(a)*reach + (windswept ? 1.05 : 0);
-      const z = Math.sin(a)*reach;
-      const y = form.height * ((windswept ? 0.74 : 0.54) + t*(windswept ? 0.15 : 0.35));
-      const joint: Point = [
-        THREE.MathUtils.lerp(fork[0], leader[0], t),
-        THREE.MathUtils.lerp(fork[1], leader[1], t),
-        THREE.MathUtils.lerp(fork[2], leader[2], t),
-      ];
-      const elbow: Point = [joint[0] + 0.37*(x-joint[0]), (joint[1]+y)/2, z*0.31];
-      add(branch(joint,elbow,0.12,0.08),true);
-      add(branch(elbow,[x,y,z],0.084,0.035),true);
-      const radius = (windswept ? 2.35 : 1.78) * (1-0.18*t);
-      if (withSprays) addCloud(add,[x,y,z],radius,windswept,rng);
-      else add(crown([x,y,z],radius,radius*0.84,form.height*0.11,false,rng));
+  }
+  if (withSprays) {
+    // A short terminal shoot carries the silhouette through the topmost gaps.
+    const shoot = height / 12;
+    for (let i = 0; i < 3; i++) {
+      const tip = sprayCard(shoot, shoot * 0.45, 0, 0, 0);
+      tip.translate(-shoot / 2, 0, 0);
+      tip.rotateZ(-1.40);
+      tip.rotateY(i * Math.PI * 2 / 3);
+      add(tip.translate(0, height - shoot, 0));
     }
   }
   const geometry = mergeGeometries(parts)!;

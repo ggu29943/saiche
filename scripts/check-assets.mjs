@@ -1,8 +1,12 @@
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { extname, join } from 'node:path';
-import { ImageUtils, NodeIO, Primitive } from '@gltf-transform/core';
-import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+
+// Use the same IO and extension implementations as the installed optimizer.
+const fromCLI = createRequire(import.meta.resolve('@gltf-transform/cli'));
+const { ImageUtils, NodeIO, Primitive } = fromCLI('@gltf-transform/core');
+const { ALL_EXTENSIONS } = fromCLI('@gltf-transform/extensions');
 
 // Reference dimensions from §9.3, measured independently of the generator.
 const dimensions = {
@@ -170,7 +174,7 @@ function validSize(size) {
   return size && size.every(n => n > 0 && n <= 2048);
 }
 
-async function checkModel(file, binary, car, issues) {
+async function checkModel(file, binary, car, scenery, issues) {
   if (binary.toString('ascii', 0, 4) !== 'glTF' || binary.readUInt32LE(4) !== 2) {
     throw new Error('expected binary glTF 2.0');
   }
@@ -185,8 +189,8 @@ async function checkModel(file, binary, car, issues) {
   if (car) {
     checkCar(scene, root, dimensions[car], binary.byteLength, issues);
     limit = 150000;
-  } else if (/\/tree_[^/]+\.glb$/i.test(file)) limit = 8000;
-  else if (/\/rock_[^/]+\.glb$/i.test(file)) limit = 2000;
+  } else if (scenery?.startsWith('tree_')) limit = 8000;
+  else if (scenery?.startsWith('rock_')) limit = 2000;
   if (limit && count > limit) issues.push(`${count} triangles exceeds ${limit}`);
   return `${count} triangles`;
 }
@@ -225,6 +229,7 @@ try {
   process.exit(1);
 }
 const carPaths = new Map(Object.entries(manifest.cars ?? {}).map(([id, car]) => [car?.model, id]));
+const sceneryPaths = new Map(Object.entries(manifest.scenery ?? {}).map(([id, path]) => [path, id]));
 const totals = { OK: 0, WARN: 0, MISSING: 0 };
 for (const file of new Set(manifestFiles(manifest))) {
   let binary;
@@ -241,7 +246,7 @@ for (const file of new Set(manifestFiles(manifest))) {
   let detail = '';
   try {
     switch (extname(file).toLowerCase()) {
-      case '.glb': detail = await checkModel(file, binary, carPaths.get(file), issues); break;
+      case '.glb': detail = await checkModel(file, binary, carPaths.get(file), sceneryPaths.get(file), issues); break;
       case '.jpg': case '.jpeg': case '.png': {
         const mime = ImageUtils.getMimeType(binary);
         const size = ImageUtils.getSize(binary, mime);

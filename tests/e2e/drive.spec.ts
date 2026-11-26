@@ -1,5 +1,25 @@
 import { expect, test } from '@playwright/test';
 
+test('shows live performance statistics when stats is enabled', async ({ page }) => {
+  const drive = '/?view=drive&track=valley&car=hatch';
+  const canvas = page.locator('#game canvas');
+  const panel = page.locator('.panel.stats-panel');
+
+  await page.goto(drive);
+  await expect(canvas).toHaveAttribute('data-ready', 'true');
+  await expect(panel).toHaveCount(0);
+
+  await page.goto(drive + '&stats=1');
+  await expect(panel).toBeVisible();
+  await expect(panel.locator('dt')).toHaveText(['FPS', '画质', 'draw calls', '三角面', '物理步数']);
+  await expect.poll(() => panel.locator('dd').evaluateAll(values => {
+    const [fps, quality, calls, triangles, steps] = values.map(value => value.textContent);
+    const state = window.__apex.state();
+    return Number(fps) > 0 && fps === state.fps.toFixed(1) && quality === state.quality
+      && Number(calls) > 0 && Number(triangles) > 0 && Number(steps) > 0;
+  })).toBe(true);
+});
+
 test('hatch accelerates beyond 60 km/h in five seconds on valley', async ({ page }) => {
   await page.goto('/?view=drive&track=valley&car=hatch');
   await page.waitForFunction(() => {

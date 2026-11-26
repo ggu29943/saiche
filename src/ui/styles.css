@@ -24,6 +24,20 @@ html, body { margin: 0; height: 100%; background: #07090C; color: var(--text); f
 #ui > * { pointer-events: auto; }
 .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: var(--shadow); }
+#ui > .stats-panel {
+  position: absolute;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: max(12px, env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: auto minmax(7ch, auto);
+  gap: 2px 12px;
+  margin: 0;
+  padding: 8px 12px;
+  font: 12px/1.5 ui-monospace, Consolas, monospace;
+  pointer-events: none;
+}
+.stats-panel dt { color: var(--text-dim); }
+.stats-panel dd { margin: 0; text-align: right; }
 .btn { display: flex; align-items: center; gap: 12px; min-width: 280px; height: 52px; padding: 0 20px; border-radius: var(--radius-sm);
        background: transparent; border: 1px solid var(--line); color: var(--text); font: 600 17px/1 var(--font); letter-spacing: 0.02em;
        cursor: pointer; transition: background 160ms var(--ease), border-color 160ms var(--ease), transform 160ms var(--ease); }

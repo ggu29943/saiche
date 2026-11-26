@@ -12,10 +12,11 @@ test('fixed step accumulator, frame cap, and previous pose interpolation', () =>
     assists: { autoGear: true, abs: true, tcs: true, esc: false } });
   let count = 0;
   const afterStep = () => { count++; };
-  world.advance(0.01, input, afterStep);
+  expect(world.advance(0, input, afterStep)).toBe(0);
+  expect(world.advance(0.01, input, afterStep)).toBe(2);
   expect(count).toBe(2);
   expect(Math.abs(world.accumulator - (0.01 - 2 * PHYSICS_DT))).toBeLessThan(1e-9);
-  world.advance(0.5, input, afterStep);
+  expect(world.advance(0.5, input, afterStep)).toBe(12);
   expect(count).toBe(14);
   expect(world.accumulator).toBe(0);
   expect(world.interpolated().pos).toEqual(world.prev.pos);

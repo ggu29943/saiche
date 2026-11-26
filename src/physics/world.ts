@@ -19,7 +19,7 @@ export class PhysicsWorld {
     this.prev = { pos: [...vehicle.pos], q: [...vehicle.q] };
   }
 
-  advance(frameDt: number, getInput: () => DriveInput, afterStep: (dt: number) => void): void {
+  advance(frameDt: number, getInput: () => DriveInput, afterStep: (dt: number) => void): number {
     this.lastImpact = 0;
     this.accumulator += Math.min(frameDt, 0.1);
     let steps = 0;
@@ -36,6 +36,7 @@ export class PhysicsWorld {
       steps++;
     }
     if (steps === MAX_STEPS_PER_FRAME) this.accumulator = 0;
+    return steps;
   }
 
   interpolated(): Pose {

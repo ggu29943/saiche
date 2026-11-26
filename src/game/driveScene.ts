@@ -89,10 +89,11 @@ export class DriveScene {
       if (event === 'shiftUp') this.shifts.push(1);
       if (event === 'shiftDown') this.shifts.push(-1);
     }
-    this.world.advance(dt, this.physicsInput, this.afterStep);
+    const steps = this.world.advance(dt, this.physicsInput, this.afterStep);
     const pose = this.world.interpolated();
     this.car.update(pose, this.vehicle.wheels, this.world.accumulator / PHYSICS_DT, this.brake);
     this.camera.update(dt, this.car, this.vehicle);
     this.display.draw(this.scene);
+    return steps;
   }
 }

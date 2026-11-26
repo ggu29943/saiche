@@ -3,7 +3,7 @@ import { MeshStandardMaterial } from 'three';
 import type { AssetManager } from '@/assets/assetManager';
 import type { Manifest } from '@/assets/manifest';
 import { kerbTexture } from '@/track/kerbTexture';
-export type Quality = 'low' | 'medium' | 'high';
+import { QUALITY, type Quality } from './quality';
 export type TrackMaterials = {
   asphalt: MeshStandardMaterial;
   kerb: MeshStandardMaterial;
@@ -77,7 +77,7 @@ function buildMaterials(quality: Quality, maps?: Partial<Record<Surface, Surface
   };
   const asphalt = standard('asphalt', '#3A3C3F', .9);
   asphalt.normalScale.set(.8, .8);
-  const anisotropy = { low: 2, medium: 4, high: 8 }[quality];
+  const anisotropy = QUALITY[quality].anisotropy;
   const materials = {
     asphalt,
     kerb: new MeshStandardMaterial({ map: kerbTexture(anisotropy), roughness: .55 }),

@@ -42,6 +42,7 @@ export class DriveScene {
       vehicle => resolveBarriers(vehicle, track),
       vehicle => resolveBodyGround(vehicle, track.query));
     scene.add(this.car.carRoot);
+    display.setScene(scene);
     this.camera = new CameraRig(this.display.camera, track, heightAt);
   }
 
@@ -90,7 +91,7 @@ export class DriveScene {
     this.car.update(pose, this.vehicle.wheels, this.world.accumulator / PHYSICS_DT, this.brake);
     this.camera.update(dt, this.car, this.vehicle);
     this.level.environment.update(this.car.carRoot.position, this.display.camera.position);
-    this.display.draw(this.level.scene);
+    this.display.draw(dt);
     return steps;
   }
 }

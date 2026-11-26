@@ -2,17 +2,13 @@ import * as THREE from 'three';
 import { hash2 } from '@/math/noise';
 import { mulberry32 } from '@/math/rng';
 import { smoothstep } from '@/math/scalar';
-import type { Quality } from '@/render/materials';
+import { QUALITY, type Quality } from '@/render/quality';
 import { nearestSample } from './terrain';
 import { loadTreeSprays, makeTreeModel, TreeCluster } from './trees';
 import type { Track } from './track';
 
 type Kind = 'trees' | 'rocks';
 interface Candidate { x: number; y: number; z: number; fromBarrier: number; model: string }
-const limits = {
-  trees: { low: 800, medium: 2500, high: 6000 },
-  rocks: { low: 150, medium: 400, high: 800 },
-};
 
 function candidates(track: Track, heightAt: (x: number, z: number) => number, kind: Kind) {
   const { seed } = track.data.scenery;
@@ -84,7 +80,7 @@ function addTrees(group: THREE.Group, name: string, items: Candidate[], seed: nu
       center.z += tree.z;
     }
     center.divideScalar(batch.length);
-    const near = instances(name,batch,seed,model.canopy,model.solid,center,quality !== 'low');
+    const near = instances(name,batch,seed,model.canopy,model.solid,center,QUALITY[quality].treeShadows);
     const otherLevel = (geometry: THREE.BufferGeometry, material: THREE.Material, suffix: string) => {
       const mesh = new THREE.InstancedMesh(geometry,material,0);
       mesh.name = name + suffix;
@@ -92,7 +88,7 @@ function addTrees(group: THREE.Group, name: string, items: Candidate[], seed: nu
       mesh.count = near.count;
       mesh.computeBoundingSphere();
       mesh.matrixAutoUpdate = false;
-      mesh.castShadow = quality !== 'low';
+      mesh.castShadow = QUALITY[quality].treeShadows;
       mesh.receiveShadow = true;
       mesh.visible = false;
       return mesh;
@@ -116,7 +112,7 @@ export function placeScenery(track: Track, heightAt: (x: number, z: number) => n
   const seed = track.data.scenery.seed;
   const sprays = loadTreeSprays();
   for (const kind of ['trees', 'rocks'] as const) {
-    const items = candidates(track, heightAt, kind).slice(0, limits[kind][quality]);
+    const items = candidates(track, heightAt, kind).slice(0, kind === 'trees' ? QUALITY[quality].maxTrees : QUALITY[quality].maxRocks);
     if (kind === 'trees') console.info('[scenery] trees', items.length);
     for (const name of track.data.scenery[kind].models) {
       const variant = items.filter(p => p.model === name);

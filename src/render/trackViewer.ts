@@ -14,9 +14,10 @@ export class TrackViewer {
     bounds.getCenter(this.controls.target);
     camera.position.copy(this.controls.target).add(new THREE.Vector3(0,900,0.01));
     this.controls.update();
+    display.setScene(level.scene);
   }
-  draw() {
+  draw(dt: number) {
     this.level.environment.update(this.controls.target, this.display.camera.position);
-    this.display.draw(this.level.scene);
+    this.display.draw(dt);
   }
 }

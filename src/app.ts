@@ -5,7 +5,7 @@ import { Track } from './track/track';
 import { AssetManager } from './assets/assetManager';
 import { CarView } from './render/carView';
 import type { CarConfig } from './physics/types';
-import type { Quality } from './render/materials';
+import type { Quality } from './render/quality';
 import { DEFAULT_SETTINGS } from './game/settings';
 import { DriveScene } from './game/driveScene';
 import { CARS, TRACKS } from './data';
@@ -27,15 +27,15 @@ export class App {
   constructor(readonly game: HTMLElement, private ui: HTMLElement) {
     const params = new URLSearchParams(location.search);
     const track = params.get('track') === 'coast' ? TRACKS.coast : TRACKS.valley;
+    const q = params.get('q');
+    const quality = q === 'low' || q === 'medium' || q === 'high' ? q : undefined;
     if (params.get('view') === 'drive') {
       const id = params.get('car');
       const cfg = id === 'coupe' || id === 'rally' ? CARS[id] : CARS.hatch;
-      const quality = params.get('q');
       const paintIndex = Number(params.get('paint') ?? DEFAULT_SETTINGS.paint[cfg.id]);
-      void this.openDrive(new Track(track), cfg, paintIndex,
-        quality === 'low' || quality === 'high' || quality === 'medium' ? quality : undefined);
+      void this.openDrive(new Track(track), cfg, paintIndex, quality);
     } else if (params.get('view') === 'track') {
-      void this.openViewer(new Track(track));
+      void this.openViewer(new Track(track), quality);
     } else this.go('title');
     if (params.get('stats') === '1') this.stats = new StatsPanel(ui);
     const pending = () => { throw new Error('not implemented'); };
@@ -57,8 +57,8 @@ export class App {
     this.previous = performance.now();
     requestAnimationFrame(this.frame);
   }
-  private async openViewer(track: Track) {
-    const display = new RaceRenderer(this.game, 'medium');
+  private async openViewer(track: Track, quality?: Quality) {
+    const display = new RaceRenderer(this.game, quality ?? 'medium');
     const assets = new AssetManager(import.meta.env.BASE_URL + 'assets/');
     this.viewer = new TrackViewer(display, track, await buildTrackScene(track, display, assets));
   }
@@ -91,7 +91,7 @@ export class App {
     const render = display?.renderer.info.render;
     const lastFrame = render?.frame;
     const steps = this.drive?.draw(Math.min(dt / 1000, 0.1)) ?? 0;
-    this.viewer?.draw();
+    this.viewer?.draw(dt / 1000);
 
     // 规格未指定：渲染器跳过提交时，FPS 只记录实际绘制的帧。
     if (!render || render.frame !== lastFrame) this.recordFrame(now);

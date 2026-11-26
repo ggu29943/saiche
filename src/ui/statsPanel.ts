@@ -1,4 +1,4 @@
-import type { Quality } from '@/render/materials';
+import type { Quality } from '@/render/quality';
 import { strings } from './strings';
 
 export class StatsPanel {

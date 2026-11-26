@@ -1,10 +1,9 @@
 import { Mesh, PlaneGeometry } from 'three';
 import { fbm } from '@/math/noise';
 import { clamp, lerp, pmod, smoothstep } from '@/math/scalar';
-import type { Quality, TrackMaterials } from '@/render/materials';
+import { QUALITY, type Quality } from '@/render/quality';
+import type { TrackMaterials } from '@/render/materials';
 import { DRAIN_SLOPE, Track } from './track';
-
-const terrainSegments = { low: 128, medium: 192, high: 256 };
 
 export function nearestSample(track: Track, x: number, z: number) {
   let best = Infinity;
@@ -47,7 +46,7 @@ function terrainHeight(track: Track, x: number, z: number) {
 }
 
 export function buildTerrain(track: Track, quality: Quality, mats: Pick<TrackMaterials, 'terrain'>) {
-  const n = terrainSegments[quality];
+  const n = QUALITY[quality].terrainSegments;
   const size = track.data.terrain.size;
   const xs = track.pos.map(p => p[0]), zs = track.pos.map(p => p[2]);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;

@@ -2,11 +2,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import type { AssetManager } from '@/assets/assetManager';
 import type { Track } from '@/track/track';
-import type { Quality } from './materials';
-
-const shadowSettings = {
-  low: { size: 1024, range: 40 }, medium: { size: 2048, range: 60 }, high: { size: 4096, range: 80 },
-};
+import { QUALITY, type Quality } from './quality';
 
 export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRenderer,
   track: Track, assets: AssetManager, quality: Quality) {
@@ -50,7 +46,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
   sun.castShadow = true;
   sun.shadow.bias = -.0004;
   sun.shadow.normalBias = .02;
-  const { size, range } = shadowSettings[quality];
+  const { shadowMapSize: size, shadowRange: range } = QUALITY[quality];
   sun.shadow.mapSize.set(size, size);
   Object.assign(sun.shadow.camera, { left: -range, right: range, top: range, bottom: -range, near: 1, far: 800 });
   sun.shadow.camera.updateProjectionMatrix();

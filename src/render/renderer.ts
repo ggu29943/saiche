@@ -4,6 +4,8 @@ import type { Quality } from './materials';
 export class RaceRenderer {
   readonly renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
   private inFlight: WebGLSync | null = null;
+  private submittedAt = 0;
+  private nextSoftwareFrame = 0;
   readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2200);
   readonly quality: Quality;
   private readonly softwareLow: boolean;
@@ -41,6 +43,18 @@ export class RaceRenderer {
     if (this.inFlight) {
       if (gl.clientWaitSync(this.inFlight, 0, 0) === gl.TIMEOUT_EXPIRED) return;
       gl.deleteSync(this.inFlight);
+      this.inFlight = null;
+      if (this.softwareLow) {
+        // Software rasterization competes with input and physics for CPU time.
+        // Leave a comparable interval free after each expensive frame.
+        const elapsed = performance.now() - this.submittedAt;
+        this.nextSoftwareFrame = this.submittedAt + Math.min(250, 2 * elapsed);
+      }
+    }
+    if (this.softwareLow) {
+      const now = performance.now();
+      if (now < this.nextSoftwareFrame) return;
+      this.submittedAt = now;
     }
     this.renderer.render(scene, this.camera);
     this.inFlight = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);

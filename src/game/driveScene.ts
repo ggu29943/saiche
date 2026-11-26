@@ -9,10 +9,9 @@ import type { DriveInput } from '@/physics/types';
 import { Vehicle } from '@/physics/vehicle';
 import { PhysicsWorld } from '@/physics/world';
 import { CameraRig } from '@/render/cameraRig';
-import type { Quality } from '@/render/materials';
 import type { CarView } from '@/render/carView';
 import { RaceRenderer } from '@/render/renderer';
-import { buildTrackScene } from '@/render/trackScene';
+import type { TrackScene } from '@/render/trackScene';
 import type { Track } from '@/track/track';
 import { DEFAULT_SETTINGS } from './settings';
 
@@ -22,8 +21,6 @@ export class DriveScene {
   readonly vehicle: Vehicle;
   readonly world: PhysicsWorld;
   readonly camera: CameraRig;
-  readonly display: RaceRenderer;
-  private readonly scene;
   private readonly input = new InputManager();
   private readonly smoothing = new InputSmoothing();
   private readonly shifts: (-1 | 1)[] = [];
@@ -35,10 +32,9 @@ export class DriveScene {
   private upsideDownSteps = 0;
   private nextResetStep = 0;
 
-  constructor(root: HTMLElement, readonly track: Track, readonly car: CarView, quality?: Quality) {
-    this.display = new RaceRenderer(root, quality, true);
-    const { scene, heightAt } = buildTrackScene(track, this.display.quality);
-    this.scene = scene;
+  constructor(readonly display: RaceRenderer, readonly track: Track, readonly car: CarView,
+    private readonly level: TrackScene) {
+    const { scene, heightAt } = level;
     this.vehicle = new Vehicle(car.cfg, track.query);
     this.progressS = track.data.startS - track.data.spawnBehindStart;
     resetToTrack(this.vehicle, track, this.progressS);
@@ -93,7 +89,8 @@ export class DriveScene {
     const pose = this.world.interpolated();
     this.car.update(pose, this.vehicle.wheels, this.world.accumulator / PHYSICS_DT, this.brake);
     this.camera.update(dt, this.car, this.vehicle);
-    this.display.draw(this.scene);
+    this.level.environment.update(this.car.carRoot.position, this.display.camera.position);
+    this.display.draw(this.level.scene);
     return steps;
   }
 }

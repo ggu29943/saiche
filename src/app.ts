@@ -1,3 +1,5 @@
+import { RaceRenderer } from './render/renderer';
+import { buildTrackScene } from './render/trackScene';
 import { TrackViewer } from './render/trackViewer';
 import { Track } from './track/track';
 import { AssetManager } from './assets/assetManager';
@@ -33,7 +35,7 @@ export class App {
       void this.openDrive(new Track(track), cfg, paintIndex,
         quality === 'low' || quality === 'high' || quality === 'medium' ? quality : undefined);
     } else if (params.get('view') === 'track') {
-      this.viewer = new TrackViewer(game, new Track(track));
+      void this.openViewer(new Track(track));
     } else this.go('title');
     if (params.get('stats') === '1') this.stats = new StatsPanel(ui);
     const pending = () => { throw new Error('not implemented'); };
@@ -55,11 +57,18 @@ export class App {
     this.previous = performance.now();
     requestAnimationFrame(this.frame);
   }
+  private async openViewer(track: Track) {
+    const display = new RaceRenderer(this.game, 'medium');
+    const assets = new AssetManager(import.meta.env.BASE_URL + 'assets/');
+    this.viewer = new TrackViewer(display, track, await buildTrackScene(track, display, assets));
+  }
+
   private async openDrive(track: Track, cfg: CarConfig, paintIndex: number, quality?: Quality) {
     const assets = new AssetManager(import.meta.env.BASE_URL + 'assets/');
-    const car = await CarView.load(cfg, track.data.id, assets);
+    const display = new RaceRenderer(this.game, quality, true);
+    const [car, level] = await Promise.all([CarView.load(cfg, track.data.id, assets), buildTrackScene(track, display, assets)]);
     car.setPaint(paintIndex);
-    this.drive = new DriveScene(this.game, track, car, quality);
+    this.drive = new DriveScene(display, track, car, level);
     this.previous = performance.now();
     this.previousRender = undefined;
     this.intervals.length = 0;

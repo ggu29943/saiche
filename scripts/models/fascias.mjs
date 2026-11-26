@@ -140,7 +140,16 @@ function grilleInsert(body, shape, m, outline, id, front) {
 function addLamp(body, car, shape, m, sign, front) {
   const p = lamps[car.id];
   const normal = v3(0,0,front?1:-1);
-  const on = depth => (u,v) => shape.end(front,sign*u,v).addScaledVector(normal,depth);
+  const on = depth => (u,v) => {
+    if (front && car.id !== 'coupe') {
+      // Keep the whole lamp assembly between the horizontal bumper seam
+      // and the bonnet edge, including its gasket at the outer corner.
+      const upper = shape.end(true, sign*u, 1).y;
+      const y = mix(shape.bumperUpperY + .014, upper - .011, (v - .54) / .48);
+      v = (y - shape.sill) / (upper - shape.sill);
+    }
+    return shape.end(front,sign*u,v).addScaledVector(normal,depth);
+  };
   const outline = front ? p.head : p.tail;
   panel(body, front?'headlamp_gasket':'rear_lamp_gasket', m.rubber, outline, on(.010), normal);
   const mid = [0,1].map(k=>outline.reduce((n,q)=>n+q[k],0)/outline.length);
@@ -222,12 +231,27 @@ function sideInlet(body,car,shape,m,sgn) {
   rim(body, 'corner_duct_bezel', m.dark, intake, on(0), normal, [
     [1.04, 1.05, .002], [1, 1, .019], [.90, .86, .029], [.79, .72, .008],
   ]);
-  if (car.id==='rally') {
-    ellipse(body,'fog_lamp_rim',m.chrome,[.815,.324],.070,.10,on(.015),normal);
-    ellipse(body,'fog_lamp',m.light_head,[.815,.324],.049,.073,on(.022),normal);
-  } else {
-    for (const v of [.258,.323]) pipe(body,'intake_blade',m.lens,
-      [[.72,v],[.795,v+.013],[.89,v+.032]],on(.016),.006);
+  for (const v of [.258,.323]) pipe(body,'intake_blade',m.lens,
+    [[.72,v],[.795,v+.013],[.89,v+.032]],on(.016),.006);
+}
+
+function frontSplitter(body, shape, m) {
+  const stations = steps(48).map(t => mix(-.99, .99, t));
+  const centerZ = shape.end(true, 0, .053).z;
+  const section = (u, edge) => {
+    const p = shape.end(true, u, .053 + .052 * u**4);
+    const leadingZ = shape.frontTipZ + (p.z - centerZ) - .018*u**4;
+    // The upper and lower returns meet the bumper behind the rounded nose.
+    p.z = edge === 0 || edge === 3 ? p.z - .006 : leadingZ - (edge === 2 ? .003 : 0);
+    p.y += [.008, .006, -.005, -.012][edge] * (1 - .35*u**4);
+    return p;
+  };
+  for (const [a,b,normal] of [[0,1,v3(0,1,0)],[1,2,v3(0,0,1)],[2,3,v3(0,-1,0)]]) {
+    patch(body, 'front_splitter', m.dark, stations, [a,b], section, normal);
+  }
+  for (const u of [stations[0],stations.at(-1)]) {
+    patch(body,'splitter_end',m.dark,[0,1],[0,1],(t,h) =>
+      section(u,h ? 3 : 0).lerp(section(u,h ? 2 : 1),t),v3(Math.sign(u),0,0));
   }
 }
 
@@ -259,13 +283,16 @@ export function addFascias(body, car, shape, m) {
       endPoint(true,.009),v3(0,0,1));
     pipe(body,'grille_crossbar',m.dark,[[-.317,.766],[-.15,.765],[.15,.765],[.317,.766]],endPoint(true,.016),.008);
   }
-  for (const front of [true,false]) {
-    const on = endPoint(front,.012);
-    // Bumper lip turns up into the corners of the intake.
-    pipe(body,front?'front_splitter':'rear_valance',m.dark,steps(16).map(t=>{
-      const u = mix(-.95,.95,t); return [u,.053 + .052 * Math.abs(u)**4];
-    }),on,.018);
-  }
+  // The seam is an exterior reference for the bumper top and headlamp base.
+  const seam = steps(48).map(t => {
+    const u = mix(-.99,.99,t);
+    return endPoint(true,.002)(u,shape.bumperSeam(u));
+  });
+  bead(body,'bumper_shut_line',m.dark,seam,.0025,6);
+  frontSplitter(body,shape,m);
+  pipe(body,'rear_valance',m.dark,steps(16).map(t=>{
+    const u = mix(-.95,.95,t); return [u,.053 + .052 * Math.abs(u)**4];
+  }),endPoint(false,.012),.018);
   if (car.id==='coupe') {
     for (const s of [-1,1]) exhaust(body,shape,m,s*.72,.083,.037);
   } else if (car.id==='hatch') {

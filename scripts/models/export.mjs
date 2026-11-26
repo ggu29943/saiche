@@ -5,6 +5,10 @@ import { Document, NodeIO } from '@gltf-transform/core';
 import meshopt from 'meshoptimizer';
 
 const { MeshoptSimplifier } = meshopt;
+MeshoptSimplifier.useExperimentalFeatures = true;
+// These centre sections carry the specified roof, hood, rake and overhang.
+const dimensionedPanels = new Set(['bonnet', 'hood_scoop', 'scoop_lip', 'crowned_roof_panel',
+  'front_bumper', 'front_upper_fascia', 'front_splitter']);
 
 // The loft samples define the curves. Remove redundant triangles from flat or
 // nearly flat panels at export time while locking the seams to adjacent pieces.
@@ -13,7 +17,15 @@ function compactSurface(batch) {
   const indices = Uint32Array.from(batch.indices);
   const target = 3 * Math.max(1, Math.floor(indices.length * 0.36 / 3));
   const scale = MeshoptSimplifier.getScale(positions, 3);
-  const [reduced] = MeshoptSimplifier.simplify(indices, positions, 3, target, 0.00065 / scale, ['LockBorder']);
+  let reduced;
+  if (batch.locked.length) {
+    const locks = new Uint8Array(positions.length / 3);
+    for (const index of batch.locked) locks[index] = 1;
+    [reduced] = MeshoptSimplifier.simplifyWithAttributes(indices, positions, 3, positions, 3, [],
+      locks, target, 0.00065 / scale, ['LockBorder']);
+  } else {
+    [reduced] = MeshoptSimplifier.simplify(indices, positions, 3, target, 0.00065 / scale, ['LockBorder']);
+  }
   const [remap, count] = MeshoptSimplifier.compactMesh(reduced);
   const outputPositions = new Float32Array(count * 3);
   const outputNormals = new Float32Array(count * 3);
@@ -29,8 +41,9 @@ function compactSurface(batch) {
 
 // A sampled panel may converge to a single point at its tip. Keep only the
 // vertices used by nondegenerate faces, with a valid normal at every pole.
-function appendGeometry(batch, source, transform) {
-  const geometry = source.clone().applyMatrix4(transform);
+function appendGeometry(batch, part) {
+  const geometry = part.geometry.clone().applyMatrix4(part.matrixWorld);
+  const keepCenter = dimensionedPanels.has(part.name);
   const positions = geometry.getAttribute('position');
   const normals = geometry.getAttribute('normal');
   const indices = geometry.index?.array ?? Uint32Array.from({ length: positions.count }, (_, i) => i);
@@ -46,6 +59,7 @@ function appendGeometry(batch, source, transform) {
       const index = indices[i + corner];
       if (mapped[index] === -1) {
         mapped[index] = batch.positions.length / 3;
+        if (keepCenter && Math.abs(positions.getX(index)) < 1e-7) batch.locked.push(mapped[index]);
         batch.positions.push(positions.getX(index), positions.getY(index), positions.getZ(index));
         normal.fromBufferAttribute(normals, index);
         if (normal.lengthSq() < 1e-12) normal.copy(face);
@@ -89,8 +103,8 @@ export async function writeCar(filename, body, wheels, calipers, config) {
     group.traverse(child => {
       if (!child.isMesh) return;
       const material = child.material;
-      if (!batches.has(material)) batches.set(material, { positions: [], normals: [], indices: [] });
-      appendGeometry(batches.get(material), child.geometry, child.matrixWorld);
+      if (!batches.has(material)) batches.set(material, { positions: [], normals: [], indices: [], locked: [] });
+      appendGeometry(batches.get(material), child);
     });
     return Array.from(batches, ([material, batch]) => {
       const label = name + '_' + material.name;

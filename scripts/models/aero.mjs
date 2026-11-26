@@ -48,31 +48,39 @@ export function addAero(body, car, f, c, m) {
     const middle=v3(0,wing.y+.007,wing.z-.119);
     bead(body,'high_mount_stop_light',m.light_brake,[middle.clone().add(v3(-.18,0,0)),middle.clone().add(v3(.18,0,0))],.012,8);
   } else if(car.id==='rally') {
-    // The scoop is a continuous painted ramp around a recessed, forward-facing inlet.
-    const zBack=.865,zMouth=1.49;
-    const scoop=(u,t)=>{
-      const z=mix(zBack,zMouth,t);
-      const w=mix(.205,.298,Math.sin(t*Math.PI/2));
-      const p=f.top(z,u*w/(f.width(z)*.955));
-      p.y+=.006+.117*Math.sin(t*Math.PI/2)**1.25*(1-.37*u**4);
+    // The scoop starts flush just ahead of the axle. Its roof descends more
+    // slowly than the bonnet, making room for the forward-facing opening.
+    const zBack = f.axle + .025, zMouth = f.noseZ - .22;
+    const onBonnet = (z,x) => f.top(z,x/(f.width(z)*.955));
+    const base = (u,t) => onBonnet(mix(zBack,zMouth,t),u*mix(.285,.265,t));
+    const scoop = (u,t) => {
+      const p = base(u,t);
+      p.y += (onBonnet(zBack,p.x).y - p.y) * .64 * (1 - .53*u**4);
       return p;
     };
     patch(body,'hood_scoop',m.paint,steps(22).map(t=>2*t-1),steps(21),scoop,v3(0,1,0));
     for(const sign of [-1,1]) {
       patch(body,'scoop_cheek',m.paint,steps(20),steps(5),(t,h)=>{
-        const p=scoop(sign,t), base=f.top(mix(zBack,zMouth,t),p.x/(f.width(p.z)*.955));
-        p.y=mix(base.y,p.y,h); p.x+=sign*.008*Math.sin(Math.PI*h); return p;
+        const p=scoop(sign,t);
+        p.y=mix(base(sign,t).y,p.y,h); p.x+=sign*.004*t*Math.sin(Math.PI*h); return p;
       },v3(sign,0,0));
     }
     const mouth=(u,h)=>{
-      const p=scoop(u,1),base=f.top(zMouth,p.x/(f.width(zMouth)*.955));
-      p.y=mix(base.y+.006,p.y,h);
+      const p=scoop(u,1);
+      p.y=mix(base(u,1).y,p.y,h);
       p.z-=.045*Math.sin(Math.PI*h)*(1-u**4);
       return p;
     };
     patch(body,'scoop_opening',m.rubber,steps(24).map(t=>2*t-1),steps(9),mouth,v3(0,0,1));
-    bead(body,'scoop_lip',m.paint,steps(30).map(t=>scoop(2*t-1,1)),.012);
-    for(const u of [-.55,0,.55]) bead(body,'intake_internal_fin',m.dark,steps(9).map(h=>mouth(u,h)),.007);
+    const across=steps(30).map(t=>2*t-1);
+    patch(body,'scoop_lip',m.paint,across,[0,1],(u,t)=>{
+      const p=scoop(u,1);
+      p.z+=.007*t; p.y-=.009*t;
+      return p;
+    },v3(0,.3,1));
+    for(const u of [-.55,0,.55]) {
+      bead(body,'intake_internal_fin',m.dark,steps(9).map(h=>mouth(u,.12+.72*h)),.005);
+    }
     const wing=v3(0,1.22,-1.91);
     for(const sign of [-1,1]){
       const z=-1.88, x=sign*.53, foot=f.top(z,x/(f.width(z)*.955));

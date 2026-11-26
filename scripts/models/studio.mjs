@@ -4,24 +4,13 @@ import { AssetManager } from '../../src/assets/assetManager';
 import { CARS } from '../../src/data';
 import { CarView } from '../../src/render/carView';
 
-// Render the shipped GLB with the same materials and paint as the driving scene.
-// The model stays in its authored, wheel-on-ground pose for all four views.
-export async function createStudio(id) {
-  const car = await CarView.load(CARS[id], 'valley', new AssetManager('/assets/'));
+async function loadParkedModel(id, assets) {
+  const car = await CarView.load(CARS[id], 'valley', assets);
   if (car.source !== 'glb') throw new Error('Studio could not load the GLB for ' + id);
-  const model = car.modelOffset.children[0];
-  const width = window.innerWidth;
-  const height = window.innerHeight;
-  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-  renderer.setSize(width, height);
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  document.body.replaceChildren(renderer.domElement);
+  return car.modelOffset.children[0];
+}
 
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#aab5bc');
-  scene.fog = new THREE.Fog(scene.background, 15, 44);
+function lightStudio(scene, renderer) {
   const environment = new RoomEnvironment();
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(environment, 0.04).texture;
@@ -39,6 +28,24 @@ export async function createStudio(id) {
   const fill = new THREE.DirectionalLight('#dbe9ff', 0.85);
   fill.position.set(-4, 3, -5);
   scene.add(fill);
+}
+
+// Render the shipped GLB with the same materials and paint as the driving scene.
+// The model stays in its authored, wheel-on-ground pose for all four views.
+export async function createStudio(id) {
+  const model = await loadParkedModel(id, new AssetManager('/assets/'));
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  renderer.setSize(width, height);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.replaceChildren(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color('#aab5bc');
+  scene.fog = new THREE.Fog(scene.background, 15, 44);
+  lightStudio(scene, renderer);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
     new THREE.MeshStandardMaterial({ color: '#7d8589', roughness: 0.97 }));
   floor.rotation.x = -Math.PI / 2;
@@ -88,4 +95,77 @@ export async function createStudio(id) {
     renderer.render(scene, camera);
     renderer.getContext().finish();
   };
+}
+
+// Project the models and the height scale onto one common image plane. World
+// +Y is up, +Z points left, and the GLB origins keep their original Y values.
+export async function drawHeightComparison() {
+  const width = window.innerWidth, height = window.innerHeight;
+  const groundY = height - 84;
+  const maxHeight = 1.6;
+  const pixelsPerMetre = (groundY - 96) / maxHeight;
+  const margin = 84;
+  const ids = ['hatch', 'rally', 'coupe'];
+  const slot = (width - 2 * margin) / ids.length;
+  const centrePixel = i => margin + (i + 0.5) * slot;
+  const assets = new AssetManager('/assets/');
+  const models = await Promise.all(ids.map(id => loadParkedModel(id, assets)));
+
+  const scene = new THREE.Scene();
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setSize(width, height);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  lightStudio(scene, renderer);
+  models.forEach((model, i) => {
+    const bounds = new THREE.Box3().setFromObject(model);
+    const centerZ = (bounds.max.z + bounds.min.z) / 2;
+    model.position.z += (width / 2 - centrePixel(i)) / pixelsPerMetre - centerZ;
+    scene.add(model);
+  });
+  const halfWidth = width / (2 * pixelsPerMetre);
+  const camera = new THREE.OrthographicCamera(-halfWidth, halfWidth, groundY / pixelsPerMetre,
+    (groundY - height) / pixelsPerMetre, 0.1, 50);
+  camera.position.set(12, 0, 0);
+  camera.lookAt(0, 0, 0);
+
+  const chart = document.createElement('canvas');
+  chart.width = width;
+  chart.height = height;
+  const ctx = chart.getContext('2d');
+  const sans = '"Noto Sans CJK SC", "Microsoft YaHei", sans-serif';
+  ctx.fillStyle = '#eef2f2';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = '#24363d';
+  ctx.font = '600 36px ' + sans;
+  ctx.fillText('车身侧视高度对照', margin, 57);
+  ctx.font = '400 23px ' + sans;
+  ctx.textAlign = 'right';
+  ctx.fillText('离地高度（m）  ·  每格 0.1 m', width - margin, 57);
+
+  ctx.textBaseline = 'middle';
+  for (let tick = 0; tick <= maxHeight * 10; tick++) {
+    const metres = tick / 10;
+    const y = groundY - metres * pixelsPerMetre;
+    const major = tick % 5 === 0;
+    ctx.strokeStyle = tick === 0 ? '#354a51' : major ? '#96a7ab' : '#c7d1d3';
+    ctx.lineWidth = tick === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(margin, y);
+    ctx.lineTo(width - margin, y);
+    ctx.stroke();
+    ctx.fillStyle = major ? '#24363d' : '#627278';
+    ctx.font = (major ? '600' : '400') + ' 16px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(metres.toFixed(1), margin - 12, y);
+    ctx.textAlign = 'left';
+    ctx.fillText(metres.toFixed(1), width - margin + 12, y);
+  }
+  renderer.render(scene, camera);
+  ctx.drawImage(renderer.domElement, 0, 0);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#24363d';
+  ctx.font = '600 27px ' + sans;
+  ids.forEach((id, i) => ctx.fillText(CARS[id].name + '  /  ' + id, centrePixel(i), groundY + 44));
+  document.body.replaceChildren(chart);
+  renderer.dispose();
 }

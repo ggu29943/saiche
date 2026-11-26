@@ -3,29 +3,50 @@ import { v3, mix, profile, smooth, steps, patch, bead, oval, mesh } from './geom
 
 export function buildCabin(body, car, f, m) {
   const [, backRoof, frontRoof] = f.cabin;
-  // Keep full headroom over the second row. Aft of it, the roof rolls down
-  // and narrows into the almost upright hatch glass and the roof spoiler.
-  const tailRoll = t => car.id === 'hatch' ? 1 - smooth(t / .30) : 0;
+  const hatch = car.id === 'hatch';
+  const rearGlassSlope = Math.tan(Math.PI / 6); // 30° from vertical
+  // t runs from the C pillar to the A pillar. The hatch roof starts to
+  // taper behind the B pillar and meets the rear screen 9 cm below its peak.
+  const tailRoll = t => hatch ? 1 - smooth(t / f.doorSplit) : 0;
   const roofHalfWidth = t => f.roofWidth * (.955 + .045*Math.sin(Math.PI*t)) - .028*tailRoll(t);
-  const roofRailHeight = t => f.height - f.roofCrown - .042*(2*t-1)**2 - .105*tailRoll(t);
+  const roofRailHeight = t => f.height - f.roofCrown - (hatch
+    ? .09 * tailRoll(t) + .04 * smooth((t - .54) / .46)
+    : .042 * (2*t-1)**2);
+  const rearRoofZ = u => {
+    if (!hatch) return backRoof - .07*(1-u*u);
+    const foot = f.belt(u,0);
+    const topY = roofRailHeight(0) + f.roofCrown*(1-u*u);
+    return foot.z + (topY - foot.y)*rearGlassSlope;
+  };
+  // Reserve the lower rail for the seal. At h=.065 the first glass vertex
+  // falls exactly on the specified beltline, regardless of local roof height.
+  const sideHeightFraction = (t,h) => {
+    const bottom = f.belt(1,t).y;
+    const seal = (f.waistY - bottom) / (roofRailHeight(t) - bottom);
+    return h < .065 ? seal*h/.065 : mix(seal,1,(h-.065)/.935);
+  };
   // A wider belt and a narrower roof create tumblehome. Windscreen corners
   // recede relative to its centre and all four panes curve in two directions.
   const rail = (t,h,sign) => {
     const foot = f.belt(sign,t);
-    const topZ = mix(backRoof,frontRoof,t);
+    const topZ = mix(rearRoofZ(sign),frontRoof,t);
     const roofX = sign * roofHalfWidth(t);
     const roofY = roofRailHeight(t);
-    return v3(mix(foot.x,roofX,h) + sign*.012*Math.sin(Math.PI*h),
-      mix(foot.y,roofY,h), mix(foot.z,topZ,h));
+    const s = sideHeightFraction(t,h);
+    return v3(mix(foot.x,roofX,s) + sign*.012*Math.sin(Math.PI*s),
+      mix(foot.y,roofY,s), mix(foot.z,topZ,s));
   };
   const panePoint = (front,u,h) => {
     const end = front ? 1 : 0;
     const foot = f.belt(u,end);
     const corner = rail(end,1,1);
     const crown = 1-u*u;
-    return v3(mix(foot.x,corner.x*u,h) + u*.012*Math.sin(Math.PI*h),
-      mix(foot.y,corner.y + f.roofCrown*crown,h) + .012*Math.sin(Math.PI*h)*crown,
-      mix(foot.z,corner.z + (front ? .07 : -.07)*crown,h));
+    const s = sideHeightFraction(end,h);
+    const bow = .012*Math.sin(Math.PI*s);
+    const y = mix(foot.y,corner.y + f.roofCrown*crown,s) + bow*crown;
+    const z = !front && hatch ? foot.z + (y - foot.y)*rearGlassSlope
+      : mix(foot.z,front ? corner.z + .07*crown : rearRoofZ(u),s);
+    return v3(mix(foot.x,corner.x*u,s) + u*bow, y, z);
   };
   const range = (a,b,n)=>steps(n).map(t=>mix(a,b,t));
   const tile = (name, material, at, outward, left, right, low, high, nx = 12, ny = 6) =>
@@ -154,9 +175,10 @@ function seatLoft(body, name, material, cx, sections) {
 
 function buildInterior(body, car, f, m) {
   const floor = f.sill + .115;
+  const cockpitAdvance = car.id === 'coupe' ? .15 : 0;
   const atFloor = (u,t) => {
     const p = f.belt(u,t);
-    return v3(p.x*.86, floor, p.z*.87);
+    return v3(p.x*.86, floor, mix(cockpitAdvance,p.z,.87));
   };
   const across = steps(16).map(t => 2*t-1);
   patch(body,'footwells',m.textile,across,steps(18),atFloor,v3(0,1,0));
@@ -216,7 +238,7 @@ function buildInterior(body, car, f, m) {
     return base;
   };
   patch(body,'parcel_shelf',m.textile,across,steps(8),rearDeck,v3(0,1,0));
-  const frontZ = car.id === 'coupe' ? -.46 : -.25;
+  const frontZ = car.id === 'coupe' ? -.46 + cockpitAdvance : -.25;
   const seatHeight = f.height - (car.id === 'coupe' ? .15 : .17);
   for (const x of [-.365,.365]) {
     const cushionY = floor+.17;

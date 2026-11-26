@@ -35,6 +35,15 @@ try {
       console.log(file);
     }
   }
+  if (new Set(models).size === 3) {
+    await page.setViewportSize({ width: 3000, height: 500 });
+    await page.goto(new URL('scripts/models/studio.html', url).href);
+    await page.waitForFunction(() => typeof window.drawHeightComparison === 'function');
+    await page.evaluate(() => window.drawHeightComparison());
+    const file = 'cars-side-heights.png';
+    await page.locator('canvas').screenshot({ path: join(output, file) });
+    console.log(file);
+  }
 } finally {
   await browser?.close();
   await server.close();

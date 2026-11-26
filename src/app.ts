@@ -5,7 +5,7 @@ import { Track } from './track/track';
 import { AssetManager } from './assets/assetManager';
 import { CarView } from './render/carView';
 import type { CarConfig } from './physics/types';
-import type { Quality } from './render/quality';
+import { AutoQuality, initialQuality, type Quality } from './render/quality';
 import { DEFAULT_SETTINGS } from './game/settings';
 import { DriveScene } from './game/driveScene';
 import { CARS, TRACKS } from './data';
@@ -17,6 +17,15 @@ import { StatsPanel } from './ui/statsPanel';
 export class App {
   private drive?: DriveScene;
   private viewer?: TrackViewer;
+  private display?: RaceRenderer;
+  private generation = 0;
+  private readonly coarse = matchMedia('(pointer: coarse)').matches;
+  private readonly forced?: Quality;
+  private sampler?: AutoQuality;
+  private readonly cycleLimit: number;
+  private switches = 0;
+  private cycleTimer?: number;
+  private reported = false;
   private screens = new Map<string, Screen>([['title', new Title()]]);
   private current?: Screen;
   private readonly stats?: StatsPanel;
@@ -28,14 +37,16 @@ export class App {
     const params = new URLSearchParams(location.search);
     const track = params.get('track') === 'coast' ? TRACKS.coast : TRACKS.valley;
     const q = params.get('q');
-    const quality = q === 'low' || q === 'medium' || q === 'high' ? q : undefined;
+    this.forced = q === 'low' || q === 'medium' || q === 'high' ? q : undefined;
+    const cycles = Number(params.get('cycle'));
+    this.cycleLimit = Number.isSafeInteger(cycles) && cycles > 0 ? cycles : 0;
     if (params.get('view') === 'drive') {
       const id = params.get('car');
       const cfg = id === 'coupe' || id === 'rally' ? CARS[id] : CARS.hatch;
       const paintIndex = Number(params.get('paint') ?? DEFAULT_SETTINGS.paint[cfg.id]);
-      void this.openDrive(new Track(track), cfg, paintIndex, quality);
+      void this.openTrack(new Track(track), { cfg, paintIndex });
     } else if (params.get('view') === 'track') {
-      void this.openViewer(new Track(track), quality);
+      void this.openTrack(new Track(track));
     } else this.go('title');
     if (params.get('stats') === '1') this.stats = new StatsPanel(ui);
     const pending = () => { throw new Error('not implemented'); };
@@ -57,35 +68,74 @@ export class App {
     this.previous = performance.now();
     requestAnimationFrame(this.frame);
   }
-  private async openViewer(track: Track, quality?: Quality) {
-    const display = new RaceRenderer(this.game, quality ?? 'medium');
-    const assets = new AssetManager(import.meta.env.BASE_URL + 'assets/');
-    this.viewer = new TrackViewer(display, track, await buildTrackScene(track, display, assets));
+  private unloadTrack() {
+    ++this.generation;
+    window.clearTimeout(this.cycleTimer);
+    this.cycleTimer = undefined;
+    this.sampler = undefined;
+    this.reported = false;
+    this.display?.setScene();
+    this.drive?.dispose();
+    this.viewer?.dispose();
+    this.drive = undefined;
+    this.viewer = undefined;
   }
 
-  private async openDrive(track: Track, cfg: CarConfig, paintIndex: number, quality?: Quality) {
+  private async openTrack(track: Track, selection?: { cfg: CarConfig; paintIndex: number }) {
+    this.unloadTrack();
+    this.current?.unmount();
+    this.current = undefined;
+    const generation = this.generation;
+    const display = this.display ??= new RaceRenderer(this.game, this.forced ?? initialQuality(this.coarse));
+    display.renderer.domElement.hidden = false;
     const assets = new AssetManager(import.meta.env.BASE_URL + 'assets/');
-    const display = new RaceRenderer(this.game, quality, true);
-    const [car, level] = await Promise.all([CarView.load(cfg, track.data.id, assets), buildTrackScene(track, display, assets)]);
-    car.setPaint(paintIndex);
-    this.drive = new DriveScene(display, track, car, level);
+    const [level, car] = await Promise.all([
+      buildTrackScene(track, display, assets), selection && CarView.load(selection.cfg, track.data.id, assets),
+    ]);
+    if (car && selection) {
+      car.setPaint(selection.paintIndex);
+      level.scene.add(car.carRoot);
+    }
+    if (this.generation === generation) await display.renderer.compileAsync(level.scene, display.camera);
+    if (this.generation !== generation) {
+      level.dispose();
+      return;
+    }
+    if (car) {
+      this.drive = new DriveScene(display, track, car, level);
+      if (!this.forced) this.sampler = new AutoQuality(this.coarse);
+    } else this.viewer = new TrackViewer(display, track, level);
+    display.setScene(level.scene);
     this.previous = performance.now();
     this.previousRender = undefined;
     this.intervals.length = 0;
     this.fps = 0;
   }
 
-  private get display() { return this.drive?.display ?? this.viewer?.display; }
+  private cycleTrack() {
+    const drive = this.drive;
+    if (!drive || !this.cycleLimit || this.reported || !drive.display.renderer.domElement.dataset.ready) return;
+    this.reported = true;
+    console.info('[cycle]', this.switches, drive.track.data.id, { ...drive.display.renderer.info.memory });
+    if (this.switches >= this.cycleLimit) return;
+    this.cycleTimer = window.setTimeout(() => {
+      this.switches++;
+      const next = drive.track.data.id === 'valley' ? TRACKS.coast : TRACKS.valley;
+      void this.openTrack(new Track(next), { cfg: drive.vehicle.cfg, paintIndex: drive.car.selectedPaint });
+    }, 3000);
+  }
 
   go(id: string) {
     const next = this.screens.get(id);
     if (!next) throw new Error('Unknown screen: ' + id);
+    this.unloadTrack();
+    if (this.display) this.display.renderer.domElement.hidden = true;
     this.current?.unmount();
     this.current = next;
     next.mount(this.ui);
   }
   private frame = (now: number) => {
-    const dt = now - this.previous;
+    const dt = Math.max(0, now - this.previous);
     this.previous = now;
     const display = this.display;
     const render = display?.renderer.info.render;
@@ -94,7 +144,8 @@ export class App {
     this.viewer?.draw(dt / 1000);
 
     // 规格未指定：渲染器跳过提交时，FPS 只记录实际绘制的帧。
-    if (!render || render.frame !== lastFrame) this.recordFrame(now);
+    if ((this.drive || this.viewer) && render?.frame !== lastFrame) this.recordFrame(now);
+    this.cycleTrack();
     this.stats?.update(this.fps, display?.quality ?? 'medium', render?.calls ?? 0, render?.triangles ?? 0, steps);
     requestAnimationFrame(this.frame);
   };
@@ -102,6 +153,10 @@ export class App {
   private recordFrame(now: number) {
     const dt = now - (this.previousRender ?? now);
     this.previousRender = now;
+    if (this.drive) {
+      const next = this.sampler?.sample(dt, this.drive.display.quality);
+      if (next) this.drive.setQuality(next);
+    }
     if (dt > 0) {
       this.intervals.push(dt);
       if (this.intervals.length > 60) this.intervals.shift();

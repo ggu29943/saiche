@@ -8,3 +8,22 @@ export const QUALITY = {
 } as const;
 
 export type Quality = keyof typeof QUALITY;
+
+export const initialQuality = (coarse: boolean): Quality => coarse ? 'low' : 'medium';
+
+export class AutoQuality {
+  private frames = 0;
+  private elapsed = 0;
+
+  constructor(private readonly coarse: boolean) {}
+
+  sample(intervalMs: number, current: Quality): Quality | undefined {
+    if (this.frames >= 240) return;
+    if (++this.frames <= 60) return;
+    this.elapsed += intervalMs;
+    if (this.frames < 240) return;
+    const avg = this.elapsed / 180;
+    if (avg > 24 && current !== 'low') return current === 'high' ? 'medium' : 'low';
+    if (avg < 11 && current === 'medium' && !this.coarse) return 'high';
+  }
+}

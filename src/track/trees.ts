@@ -155,15 +155,7 @@ function treeGeometry(id: Species, withSprays: boolean) {
   return geometry;
 }
 
-export function loadTreeSprays() {
-  return new THREE.TextureLoader().loadAsync(import.meta.env.BASE_URL+'assets/scenery/tree_sprays.png')
-    .then(texture => {
-      texture.colorSpace = THREE.SRGBColorSpace;
-      return texture;
-    }).catch(() => null);
-}
-
-export function makeTreeModel(name: string, sprays = loadTreeSprays()) {
+export function makeTreeModel(name: string, atlas: THREE.Texture | null, billboard: THREE.Texture | null) {
   const id: Species = name === 'tree_b' || name === 'tree_c' ? name : 'tree_a';
   const { height, aspect } = species[id];
   const solid = new THREE.MeshLambertMaterial({alphaTest:0.36, side:THREE.DoubleSide});
@@ -177,24 +169,15 @@ export function makeTreeModel(name: string, sprays = loadTreeSprays()) {
   card.dispose();
   cross.dispose();
 
-  const model = { canopy, solid, distant, leaves, proxy, plain, ready:false, hasSprays:false };
-  void sprays.then(atlas => {
-    if (!atlas) return;
+  if (atlas) {
     solid.map = atlas;
     // Needles scatter a little skylight through the back of the branch.
     solid.emissive.setHex(0xffffff);
     solid.emissiveMap = atlas;
     solid.emissiveIntensity = 0.12;
-    solid.needsUpdate = true;
-    model.hasSprays = true;
-  });
-  new THREE.TextureLoader().load(import.meta.env.BASE_URL+'assets/scenery/'+id+'.png', texture => {
-    texture.colorSpace = THREE.SRGBColorSpace;
-    leaves.map = texture;
-    leaves.needsUpdate = true;
-    model.ready = true;
-  });
-  return model;
+  }
+  leaves.map = billboard;
+  return { canopy, solid, distant, leaves, proxy, plain, ready: Boolean(billboard), hasSprays: Boolean(atlas) };
 }
 
 // Cutouts work from the roadside. From far overhead use opaque, low-poly crowns

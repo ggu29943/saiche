@@ -46,14 +46,23 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
   sun.castShadow = true;
   sun.shadow.bias = -.0004;
   sun.shadow.normalBias = .02;
-  const { shadowMapSize: size, shadowRange: range } = QUALITY[quality];
-  sun.shadow.mapSize.set(size, size);
-  Object.assign(sun.shadow.camera, { left: -range, right: range, top: range, bottom: -range, near: 1, far: 800 });
-  sun.shadow.camera.updateProjectionMatrix();
+  let texel = 0;
+  function setQuality(next: Quality) {
+    const { shadowMapSize: size, shadowRange: range, shadows } = QUALITY[next];
+    sun.castShadow = shadows;
+    if (sun.shadow.mapSize.x !== size) {
+      sun.shadow.dispose();
+      sun.shadow.map = null;
+    }
+    sun.shadow.mapSize.set(size, size);
+    Object.assign(sun.shadow.camera, { left: -range, right: range, top: range, bottom: -range, near: 1, far: 800 });
+    sun.shadow.camera.updateProjectionMatrix();
+    texel = 2 * range / size;
+  }
+  setQuality(quality);
   scene.add(sun, sun.target);
   const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
   const up = new THREE.Vector3().crossVectors(right, dir).normalize();
-  const texel = 2 * range / size;
   const marker = new URLSearchParams(location.search).get('debugSun') === '1'
     ? new THREE.Mesh(new THREE.SphereGeometry(12), new THREE.MeshBasicMaterial({ color: '#FF00FF', fog: false })) : null;
   if (marker) scene.add(marker);
@@ -83,5 +92,5 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
     scene.remove(sun, sun.target);
     sun.dispose();
   }
-  return { sun, update, dispose };
+  return { sun, update, setQuality, dispose };
 }

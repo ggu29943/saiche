@@ -29,21 +29,37 @@ export class DriveScene {
   lapInvalid = false;
   private brake = 0;
   private elapsedSteps = 0;
+  private physicsTime = performance.now();
+  private physicsTimer?: number;
+  private pendingSteps = 0;
   private upsideDownSteps = 0;
   private nextResetStep = 0;
 
   constructor(readonly display: RaceRenderer, readonly track: Track, readonly car: CarView,
     private readonly level: TrackScene) {
-    const { scene, heightAt } = level;
+    const { heightAt } = level;
     this.vehicle = new Vehicle(car.cfg, track.query);
     this.progressS = track.data.startS - track.data.spawnBehindStart;
     resetToTrack(this.vehicle, track, this.progressS);
     this.world = new PhysicsWorld(this.vehicle,
       vehicle => resolveBarriers(vehicle, track),
       vehicle => resolveBodyGround(vehicle, track.query));
-    scene.add(this.car.carRoot);
-    display.setScene(scene);
     this.camera = new CameraRig(this.display.camera, track, heightAt);
+    if (display.software) {
+      // 规格未指定：软件 WebGL 等待整帧光栅化时，浏览器可以暂停 RAF；输入与固定物理步继续计时。
+      this.physicsTimer = window.setInterval(() => { this.pendingSteps += this.advanceToNow(); }, 1000 / 60);
+    }
+  }
+
+  setQuality(quality: RaceRenderer['quality']) {
+    this.level.setQuality(quality);
+    this.display.setQuality(quality);
+  }
+
+  dispose() {
+    window.clearInterval(this.physicsTimer);
+    this.input.dispose();
+    this.level.dispose();
   }
 
   private physicsInput = (): DriveInput => {
@@ -78,7 +94,14 @@ export class DriveScene {
     if (this.upsideDownSteps * PHYSICS_DT >= AUTO_RESET_UPSIDE_DOWN_S) this.recover();
   };
 
-  draw(dt: number) {
+  private advanceToNow() {
+    const now = performance.now();
+    const dt = (now - this.physicsTime) / 1000;
+    this.physicsTime = now;
+    return document.hidden ? 0 : this.advance(dt);
+  }
+
+  private advance(dt: number) {
     this.input.poll();
     for (const event of this.input.consumeEvents()) {
       if (event === 'reset') this.recover();
@@ -86,7 +109,12 @@ export class DriveScene {
       if (event === 'shiftUp') this.shifts.push(1);
       if (event === 'shiftDown') this.shifts.push(-1);
     }
-    const steps = this.world.advance(dt, this.physicsInput, this.afterStep);
+    return this.world.advance(dt, this.physicsInput, this.afterStep);
+  }
+
+  draw(dt: number) {
+    const steps = this.physicsTimer === undefined ? this.advance(dt) : this.pendingSteps + this.advanceToNow();
+    this.pendingSteps = 0;
     const pose = this.world.interpolated();
     this.car.update(pose, this.vehicle.wheels, this.world.accumulator / PHYSICS_DT, this.brake);
     this.camera.update(dt, this.car, this.vehicle);

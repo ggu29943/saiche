@@ -4,52 +4,60 @@ import { createPostFX } from './postfx';
 
 export class RaceRenderer {
   readonly renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance', stencil: false, depth: true });
+  readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2200);
   private composer?: ReturnType<typeof createPostFX>;
+  private scene?: THREE.Scene;
   private inFlight: WebGLSync | null = null;
   private submittedAt = 0;
   private nextSoftwareFrame = 0;
-  readonly camera = new THREE.PerspectiveCamera(55, 1, 0.1, 2200);
-  readonly quality: Quality;
-  private readonly softwareLow: boolean;
+  readonly software: boolean;
 
-  constructor(root: HTMLElement, requested?: Quality, detectSoftware = false) {
+  constructor(root: HTMLElement, public quality: Quality) {
     const gl = this.renderer.getContext();
-    const extension = detectSoftware && gl.getExtension('WEBGL_debug_renderer_info');
-    const software = extension && /swiftshader|llvmpipe|software rasterizer/i.test(
-      String(gl.getParameter(extension.UNMASKED_RENDERER_WEBGL)));
-    this.quality = requested ?? (software || matchMedia('(pointer: coarse)').matches ? 'low' : 'medium');
-    // 规格未指定：在低画质纯软件渲染器上限制像素预算，避免绘图阻塞物理步进。
-    this.softwareLow = Boolean(software && !requested && this.quality === 'low');
+    const extension = gl.getExtension('WEBGL_debug_renderer_info');
+    this.software = Boolean(extension && /swiftshader|llvmpipe|software rasterizer/i.test(
+      String(gl.getParameter(extension.UNMASKED_RENDERER_WEBGL))));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.info.autoReset = false;
-    this.renderer.shadowMap.enabled = QUALITY[this.quality].shadows;
-    this.renderer.shadowMap.type = this.quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     root.append(this.renderer.domElement);
-    this.resize();
+    this.setQuality(quality);
     window.addEventListener('resize', this.resize);
   }
+
+  setQuality(quality: Quality) {
+    this.quality = quality;
+    this.renderer.shadowMap.enabled = QUALITY[quality].shadows;
+    this.renderer.shadowMap.type = quality === 'high' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    this.composer?.dispose();
+    this.composer = undefined;
+    this.resize();
+    if (this.scene) this.composer = createPostFX(this.renderer, this.scene, this.camera, quality);
+  }
+
   private resize = () => {
     const { innerWidth: width, innerHeight: height } = window;
-    const maxRatio = this.softwareLow
-      ? Math.min(1, Math.sqrt(480 * 270 / (width * height)))
-      : QUALITY[this.quality].maxPixelRatio;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxRatio));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY[this.quality].maxPixelRatio));
     this.renderer.setSize(width, height);
     this.composer?.setSize(width, height);
     this.camera.far = QUALITY[this.quality].viewDistance;
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
   };
-  setScene(scene: THREE.Scene) {
+
+  setScene(scene?: THREE.Scene) {
     this.composer?.dispose();
-    this.composer = createPostFX(this.renderer, scene, this.camera, this.quality);
+    this.scene = scene;
+    this.composer = scene && createPostFX(this.renderer, scene, this.camera, this.quality);
+    if (this.inFlight) (this.renderer.getContext() as WebGL2RenderingContext).deleteSync(this.inFlight);
+    this.inFlight = null;
+    this.nextSoftwareFrame = 0;
+    delete this.renderer.domElement.dataset.ready;
+    this.renderer.renderLists.dispose();
   }
 
   draw(dt: number) {
     if (!this.composer) return;
-    // Skip duplicate GPU submissions while the last picture is still being drawn.
-    // The animation loop can continue processing input and physics on slower GPUs.
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
     const canvas = this.renderer.domElement;
     if (this.inFlight) {
@@ -57,30 +65,25 @@ export class RaceRenderer {
       if (status === gl.TIMEOUT_EXPIRED) return;
       gl.deleteSync(this.inFlight);
       this.inFlight = null;
-      // The first submission may still be compiling shaders and drawing offscreen.
-      if (status !== gl.WAIT_FAILED && !canvas.dataset.ready) canvas.dataset.ready = 'true';
-      if (this.softwareLow) {
-        // Software rasterization competes with input and physics for CPU time.
-        // Leave a comparable interval free after each expensive frame.
-        const elapsed = performance.now() - this.submittedAt;
-        this.nextSoftwareFrame = this.submittedAt + Math.min(250, 2 * elapsed);
+      if (status !== gl.WAIT_FAILED) canvas.dataset.ready = 'true';
+      if (this.software) {
+        // 规格未指定：纯软件光栅化与物理争用 CPU，给输入和物理留出上一帧的绘制时间。
+        const now = performance.now();
+        this.nextSoftwareFrame = now + Math.min(500, now - this.submittedAt);
       }
     }
-    if (this.softwareLow) {
-      const now = performance.now();
-      if (now < this.nextSoftwareFrame) return;
-      this.submittedAt = now;
-    }
+    this.submittedAt = performance.now();
+    if (this.software && this.submittedAt < this.nextSoftwareFrame) return;
     this.renderer.info.reset();
     this.composer.render(dt);
     this.inFlight = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     gl.flush();
     if (!this.inFlight && !gl.isContextLost()) canvas.dataset.ready = 'true';
   }
+
   dispose() {
     window.removeEventListener('resize', this.resize);
-    if (this.inFlight) (this.renderer.getContext() as WebGL2RenderingContext).deleteSync(this.inFlight);
-    this.composer?.dispose();
+    this.setScene();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

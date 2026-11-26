@@ -4,7 +4,8 @@ import { mulberry32 } from '@/math/rng';
 import { smoothstep } from '@/math/scalar';
 import { QUALITY, type Quality } from '@/render/quality';
 import { nearestSample } from './terrain';
-import { loadTreeSprays, makeTreeModel, TreeCluster } from './trees';
+import type { AssetManager } from '@/assets/assetManager';
+import { makeTreeModel, TreeCluster } from './trees';
 import type { Track } from './track';
 
 type Kind = 'trees' | 'rocks';
@@ -61,8 +62,7 @@ function instances(name: string, items: Candidate[], seed: number, geometry: THR
 }
 
 function addTrees(group: THREE.Group, name: string, items: Candidate[], seed: number, quality: Quality,
-  sprays: ReturnType<typeof loadTreeSprays>) {
-  const model = makeTreeModel(name, sprays);
+  model: ReturnType<typeof makeTreeModel>) {
   const cells = new Map<string,Candidate[]>();
   // 规格未指定：按 96 米分区，让镜头只绘制可见林地，并按分区切换远景树。
   const cellSize = 96;
@@ -105,12 +105,17 @@ function addTrees(group: THREE.Group, name: string, items: Candidate[], seed: nu
   }
 }
 
-export function placeScenery(track: Track, heightAt: (x: number, z: number) => number,
-  quality: Quality, _assets: null) {
+export async function placeScenery(track: Track, heightAt: (x: number, z: number) => number,
+  quality: Quality, assets: AssetManager) {
   const group = new THREE.Group();
   group.name = 'scenery';
   const seed = track.data.scenery.seed;
-  const sprays = loadTreeSprays();
+  const treeIds = track.data.scenery.trees.models;
+  const [atlas, billboards] = await Promise.all([
+    assets.loadTexture('scenery/tree_sprays.png', true),
+    Promise.all(treeIds.map(async id => [id, await assets.loadTexture('scenery/' + id + '.png', true)] as const)),
+  ]);
+  const cards = new Map(billboards);
   for (const kind of ['trees', 'rocks'] as const) {
     const items = candidates(track, heightAt, kind).slice(0, kind === 'trees' ? QUALITY[quality].maxTrees : QUALITY[quality].maxRocks);
     if (kind === 'trees') console.info('[scenery] trees', items.length);
@@ -118,7 +123,7 @@ export function placeScenery(track: Track, heightAt: (x: number, z: number) => n
       const variant = items.filter(p => p.model === name);
       if (!variant.length) continue;
       if (kind === 'trees') {
-        addTrees(group,name,variant,seed,quality,sprays);
+        addTrees(group,name,variant,seed,quality,makeTreeModel(name, atlas, cards.get(name) ?? null));
       } else {
         const rock = new THREE.IcosahedronGeometry(1.2,0).scale(1,0.6,1).translate(0,0.45,0);
         const material = new THREE.MeshStandardMaterial({color:'#7A7A72'});

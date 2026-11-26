@@ -24,7 +24,7 @@ test('hatch accelerates beyond 60 km/h in five seconds on valley', async ({ page
   await page.goto('/?view=drive&track=valley&car=hatch');
   await page.waitForFunction(() => {
     const state = window.__apex?.state();
-    return state?.carId === 'hatch' && state.trackId === 'valley' && state.rpm > 0;
+    return state?.carId === 'hatch' && state.trackId === 'valley' && state.rpm > 0 && state.fps > 0;
   });
 
   await expect(page.locator('#game canvas')).toHaveAttribute('data-ready', 'true');

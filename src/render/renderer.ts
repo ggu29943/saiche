@@ -40,10 +40,14 @@ export class RaceRenderer {
     // Skip duplicate GPU submissions while the last picture is still being drawn.
     // The animation loop can continue processing input and physics on slower GPUs.
     const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    const canvas = this.renderer.domElement;
     if (this.inFlight) {
-      if (gl.clientWaitSync(this.inFlight, 0, 0) === gl.TIMEOUT_EXPIRED) return;
+      const status = gl.clientWaitSync(this.inFlight, 0, 0);
+      if (status === gl.TIMEOUT_EXPIRED) return;
       gl.deleteSync(this.inFlight);
       this.inFlight = null;
+      // The first submission may still be compiling shaders and drawing offscreen.
+      if (status !== gl.WAIT_FAILED && !canvas.dataset.ready) canvas.dataset.ready = 'true';
       if (this.softwareLow) {
         // Software rasterization competes with input and physics for CPU time.
         // Leave a comparable interval free after each expensive frame.
@@ -59,7 +63,7 @@ export class RaceRenderer {
     this.renderer.render(scene, this.camera);
     this.inFlight = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
     gl.flush();
-    this.renderer.domElement.dataset.ready = 'true';
+    if (!this.inFlight && !gl.isContextLost()) canvas.dataset.ready = 'true';
   }
   dispose() {
     window.removeEventListener('resize', this.resize);

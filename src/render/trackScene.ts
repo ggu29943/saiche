@@ -14,14 +14,15 @@ import { buildWater } from './water';
 export async function buildTrackScene(track: Track, display: RaceRenderer, assets: AssetManager) {
   const scene = new THREE.Scene();
   const { quality, renderer } = display;
-  const environment = await setupEnvironment(scene, renderer, track, assets, quality);
-  const mats = createMaterials(null, quality);
+  const [environment, mats] = await Promise.all([
+    setupEnvironment(scene, renderer, track, assets, quality), createMaterials(assets, quality),
+  ]);
   const { mesh, heightAt } = buildTerrain(track, quality, mats);
   scene.add(mesh, buildTrackMeshes(track, mats), buildBarriers(track, mats));
   scene.add(buildProps(track, heightAt), placeScenery(track, heightAt, quality, null));
   const water = buildWater(track.data.environment);
   if (water) scene.add(water);
-  return { scene, heightAt, environment };
+  return { scene, heightAt, environment, mats };
 }
 
 export type TrackScene = Awaited<ReturnType<typeof buildTrackScene>>;

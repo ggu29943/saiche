@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { AssetManager } from '@/assets/assetManager';
 import { lerp, pmod } from '@/math/scalar';
 import type { Track } from './track';
 
@@ -89,10 +90,10 @@ function startLine(track: Track) {
   return mesh;
 }
 
-export function buildProps(track: Track, heightAt: (x: number, z: number) => number) {
+export async function buildProps(track: Track, heightAt: (x: number, z: number) => number, assets: AssetManager) {
   const group = new THREE.Group();
   group.name = 'track-props';
-  for (const prop of track.data.props) {
+  const props = await Promise.all(track.data.props.map(async prop => {
     let x: number, z: number, y: number, yaw: number;
     const i = pmod(Math.round(('s' in prop ? prop.s : track.data.startS) / track.step), track.count);
     if ('s' in prop) {
@@ -105,24 +106,31 @@ export function buildProps(track: Track, heightAt: (x: number, z: number) => num
       y = heightAt(x, z);
       yaw = THREE.MathUtils.degToRad(prop.yawDeg);
     }
+    const model = await assets.loadScenery(prop.model);
     let object: THREE.Object3D;
-    switch (prop.model) {
-      case 'start_gantry': object = gantry(track.hw[i]); break;
-      case 'lighthouse': object = lighthouse(); break;
-      case 'grandstand': {
-        const stand = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 12),
-          new THREE.MeshStandardMaterial({ color: '#5A5F66' }));
-        stand.geometry.translate(0, 4, 0);
-        object = stand;
-        break;
+    if (model) {
+      // Place a wrapper so authored root transforms survive track-space placement.
+      object = new THREE.Group().add(model);
+    } else {
+      switch (prop.model) {
+        case 'start_gantry': object = gantry(track.hw[i]); break;
+        case 'lighthouse': object = lighthouse(); break;
+        case 'grandstand': {
+          const stand = new THREE.Mesh(new THREE.BoxGeometry(30, 8, 12),
+            new THREE.MeshStandardMaterial({ color: '#5A5F66' }));
+          stand.geometry.translate(0, 4, 0);
+          object = stand;
+          break;
+        }
+        default: return null;
       }
-      default: continue;
     }
     object.name = prop.model;
     object.position.set(x, y, z);
     object.rotation.y = yaw;
-    group.add(object);
-  }
+    return object;
+  }));
+  for (const prop of props) if (prop) group.add(prop);
   const line = startLine(track);
   group.add(line);
   group.traverse(object => {

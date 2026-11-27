@@ -21,6 +21,7 @@ export class TrackViewer {
   }
   draw(dt: number) {
     this.level.environment.update(this.controls.target, this.display.camera.position);
+    this.level.water?.update(dt);
     this.display.draw(dt);
   }
 }

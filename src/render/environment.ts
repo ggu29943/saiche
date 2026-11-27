@@ -24,6 +24,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
     } else {
       sky = new Sky();
       sky.name = 'procedural-sky';
+      sky.renderOrder = 1; // Shade the sky only where opaque terrain left the depth buffer clear.
       sky.scale.setScalar(10000);
       const u = sky.material.uniforms;
       for (const [key, value] of Object.entries(env.skyFallback)) u[key].value = value;

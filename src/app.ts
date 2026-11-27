@@ -86,7 +86,7 @@ export class App {
     this.current?.unmount();
     this.current = undefined;
     const generation = this.generation;
-    const display = this.display ??= new RaceRenderer(this.game, this.forced ?? initialQuality(this.coarse));
+    const display = this.display ??= new RaceRenderer(this.game, this.forced ?? initialQuality(this.coarse), !this.forced);
     display.renderer.domElement.hidden = false;
     const assets = new AssetManager(import.meta.env.BASE_URL + 'assets/');
     const [level, car] = await Promise.all([
@@ -96,7 +96,7 @@ export class App {
       car.setPaint(selection.paintIndex);
       level.scene.add(car.carRoot);
     }
-    if (this.generation === generation) await display.renderer.compileAsync(level.scene, display.camera);
+    if (this.generation === generation) await display.prepareScene(level.scene);
     if (this.generation !== generation) {
       level.dispose();
       return;
@@ -105,7 +105,6 @@ export class App {
       this.drive = new DriveScene(display, track, car, level);
       if (!this.forced) this.sampler = new AutoQuality(this.coarse);
     } else this.viewer = new TrackViewer(display, track, level);
-    display.setScene(level.scene);
     this.previous = performance.now();
     this.previousRender = undefined;
     this.intervals.length = 0;

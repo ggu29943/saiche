@@ -119,6 +119,7 @@ export class DriveScene {
     this.car.update(pose, this.vehicle.wheels, this.world.accumulator / PHYSICS_DT, this.brake);
     this.camera.update(dt, this.car, this.vehicle);
     this.level.environment.update(this.car.carRoot.position, this.display.camera.position);
+    this.level.water?.update(dt);
     this.display.draw(dt);
     return steps;
   }

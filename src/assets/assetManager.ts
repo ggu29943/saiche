@@ -1,4 +1,4 @@
-import { DataTexture, Group, LinearFilter, LinearSRGBColorSpace, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
+import { DataTexture, Group, LinearFilter, LinearSRGBColorSpace, Material, RGBAFormat, SRGBColorSpace, Texture, TextureLoader } from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
@@ -43,8 +43,24 @@ export class AssetManager {
   }
 
   async loadGLB(path?: string): Promise<Group | null> {
-    const model = await this.request(this.models, path, async url => (await this.gltf.loadAsync(url)).scene);
+    const model = await this.request(this.models, path, async url => {
+      const gltf = await this.gltf.loadAsync(url);
+      // alphaTest alone cannot distinguish MASK with a zero cutoff from OPAQUE.
+      for (const [object, source] of gltf.parser.associations) {
+        if (object instanceof Material && source.materials !== undefined &&
+          gltf.parser.json.materials[source.materials].alphaMode === 'MASK') object.userData.gltfAlphaMode = 'MASK';
+      }
+      return gltf.scene;
+    });
     return model?.clone() ?? null;
+  }
+
+  async loadScenery(id: string) {
+    const manifest = await this.loadManifest();
+    const model = await this.loadGLB(manifest.scenery[id]);
+    let visibleMesh = false;
+    model?.traverseVisible(node => { if (node.type === 'Mesh') visibleMesh = true; });
+    return visibleMesh ? model : null;
   }
 
   async loadTexture(path?: string, srgb = false): Promise<Texture | null> {

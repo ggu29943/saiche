@@ -11,12 +11,14 @@ export class RaceRenderer {
   private submittedAt = 0;
   private nextSoftwareFrame = 0;
   readonly software: boolean;
+  private firstSoftwareFrame: boolean;
 
-  constructor(root: HTMLElement, public quality: Quality) {
+  constructor(root: HTMLElement, public quality: Quality, automatic: boolean) {
     const gl = this.renderer.getContext();
     const extension = gl.getExtension('WEBGL_debug_renderer_info');
     this.software = Boolean(extension && /swiftshader|llvmpipe|software rasterizer/i.test(
       String(gl.getParameter(extension.UNMASKED_RENDERER_WEBGL))));
+    this.firstSoftwareFrame = this.software && automatic;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.info.autoReset = false;
@@ -37,7 +39,10 @@ export class RaceRenderer {
 
   private resize = () => {
     const { innerWidth: width, innerHeight: height } = window;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, QUALITY[this.quality].maxPixelRatio));
+    const ratio = Math.min(window.devicePixelRatio, QUALITY[this.quality].maxPixelRatio);
+    // 规格未指定：软件驱动冷启动时先显示一帧较小的完整场景，下一帧恢复所选档位的分辨率。
+    const startupRatio = this.firstSoftwareFrame ? Math.sqrt(640 * 360 / (width * height)) : ratio;
+    this.renderer.setPixelRatio(Math.min(ratio, startupRatio));
     this.renderer.setSize(width, height);
     this.composer?.setSize(width, height);
     this.camera.far = QUALITY[this.quality].viewDistance;
@@ -54,6 +59,18 @@ export class RaceRenderer {
     this.nextSoftwareFrame = 0;
     delete this.renderer.domElement.dataset.ready;
     this.renderer.renderLists.dispose();
+  }
+
+  prepareScene(scene: THREE.Scene) {
+    this.setScene(scene);
+    const previous = this.renderer.getRenderTarget();
+    // Compile the same linear HDR shaders used by RenderPass on the first frame.
+    this.renderer.setRenderTarget(this.composer!.inputBuffer);
+    try {
+      return this.renderer.compileAsync(scene, this.camera);
+    } finally {
+      this.renderer.setRenderTarget(previous);
+    }
   }
 
   draw(dt: number) {
@@ -74,6 +91,10 @@ export class RaceRenderer {
     }
     this.submittedAt = performance.now();
     if (this.software && this.submittedAt < this.nextSoftwareFrame) return;
+    if (this.firstSoftwareFrame && canvas.dataset.ready) {
+      this.firstSoftwareFrame = false;
+      this.resize();
+    }
     this.renderer.info.reset();
     this.composer.render(dt);
     this.inFlight = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);

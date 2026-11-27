@@ -16,28 +16,31 @@ import { buildWater } from './water';
 export async function buildTrackScene(track: Track, display: RaceRenderer, assets: AssetManager) {
   const scene = new THREE.Scene();
   const { quality, renderer } = display;
-  const [environment, mats] = await Promise.all([
+  const [environment, mats, water] = await Promise.all([
     setupEnvironment(scene, renderer, track, assets, quality), createMaterials(assets, quality),
+    buildWater(scene, track.data, assets, quality),
   ]);
   const { mesh, heightAt } = buildTerrain(track, quality, mats);
   scene.add(mesh, buildTrackMeshes(track, mats), buildBarriers(track, mats));
-  const scenery = await placeScenery(track, heightAt, quality, assets);
-  scene.add(buildProps(track, heightAt), scenery);
-  const water = buildWater(track.data.environment);
-  if (water) scene.add(water);
+  const [props, scenery] = await Promise.all([
+    buildProps(track, heightAt, assets), placeScenery(track, heightAt, quality, assets),
+  ]);
+  scene.add(props, scenery);
   function setQuality(next: Quality) {
     environment.setQuality(next);
+    water?.setQuality(next);
     setTrackAnisotropy(mats, QUALITY[next].anisotropy);
     scenery.traverse(node => {
       if (node instanceof THREE.InstancedMesh && node.name.startsWith('tree_')) node.castShadow = QUALITY[next].treeShadows;
     });
   }
   function dispose() {
+    water?.dispose();
     environment.dispose();
     disposeScene(scene, Object.values(mats));
     renderer.renderLists.dispose();
   }
-  return { scene, heightAt, environment, mats, setQuality, dispose };
+  return { scene, heightAt, environment, water, mats, setQuality, dispose };
 }
 
 export type TrackScene = Awaited<ReturnType<typeof buildTrackScene>>;

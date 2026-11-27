@@ -3,6 +3,7 @@ import { MeshStandardMaterial } from 'three';
 import type { AssetManager } from '@/assets/assetManager';
 import type { Manifest } from '@/assets/manifest';
 import { kerbTexture } from '@/track/kerbTexture';
+import valueNoise from './valueNoise.glsl?raw';
 import { QUALITY, type Quality } from './quality';
 export type TrackMaterials = {
   asphalt: MeshStandardMaterial;
@@ -21,24 +22,59 @@ function solidTexture(hex: number) {
   return tex;
 }
 
-export function terrainMaterial(grassAlbedo: THREE.Texture, rockAlbedo: THREE.Texture) {
+export function terrainMaterial(grassAlbedo: THREE.Texture, rockAlbedo: THREE.Texture, seaLevel?: number) {
   const material = new MeshStandardMaterial({ map: grassAlbedo, roughness: 1, metalness: 0 });
   material.userData.rockMap = rockAlbedo;
+  const shoreTime = { value: 0 };
+  if (seaLevel !== undefined) {
+    material.defines.COAST_SHORE = 1;
+    const start = performance.now();
+    material.onBeforeRender = () => { shoreTime.value = (performance.now() - start) / 1000; };
+  }
   material.onBeforeCompile = (shader) => {
     shader.uniforms.rockMap = { value: rockAlbedo };          // 占位时为 1×1 纯色 DataTexture '#6E6A63'
-    shader.uniforms.grassTint = { value: new THREE.Color(1, 1, 1) };
+    if (seaLevel !== undefined) {
+      shader.uniforms.seaLevel = { value: seaLevel };
+      shader.uniforms.shoreTime = shoreTime;
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vWPos;\nvarying float vWNy;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWNy = normalize(mat3(modelMatrix) * objectNormal).y;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D rockMap;\nvarying vec3 vWPos;\nvarying float vWNy;')
+      .replace('#include <common>', `#include <common>
+        uniform sampler2D rockMap;
+        varying vec3 vWPos;
+        varying float vWNy;
+        #ifdef COAST_SHORE
+          uniform float seaLevel, shoreTime;
+          ${valueNoise}
+        #endif`)
       .replace('#include <map_fragment>', `
         vec4 g1 = texture2D(map, vWPos.xz / 6.0);
         vec4 g2 = texture2D(map, vWPos.xz / 41.0);
         vec3 grass = g1.rgb * (0.7 + 0.6 * g2.g);
         vec3 rock = texture2D(rockMap, vWPos.xz / 9.0).rgb;
-        float k = smoothstep(0.92, 0.78, vWNy);
-        diffuseColor.rgb *= mix(grass, rock, k);
+        float k = 1.0 - smoothstep(0.78, 0.92, vWNy);
+        vec3 land = mix(grass, rock, k);
+        #ifdef COAST_SHORE
+          float y = vWPos.y - seaLevel;
+          if (y < 1.6) {
+            // The bottom is visible through nearby water. Beyond the clear
+            // zone the distant water must blend into sky, even over the seabed.
+            if (y < 0.0 && distance(cameraPosition, vWPos) > 160.0) discard;
+            vec3 sand = vec3(0.62, 0.55, 0.42);
+            vec3 beach = mix(sand * 0.55, sand, smoothstep(0.05, 0.45, y));
+            land = mix(beach, land, smoothstep(0.4, 1.6, y));
+            land *= exp(min(y, 0.0) * vec3(0.65, 0.30, 0.22));
+            if (abs(y) < 0.35) {
+              float n = 0.6 * valueNoise(vWPos.xz * 0.9 + shoreTime * vec2(.12, -.18)).x
+                      + 0.4 * valueNoise(vWPos.xz * 3.1 + shoreTime * vec2(-.28, .07)).x;
+              float band = 1.0 - smoothstep(0.16, 0.35, abs(y));
+              land = mix(land, vec3(1.6), band * smoothstep(0.35, 0.65, n));
+            }
+          }
+        #endif
+        diffuseColor.rgb *= land;
       `);
   };
   return material;
@@ -69,7 +105,7 @@ export function setTrackAnisotropy(materials: TrackMaterials, anisotropy: number
   }
 }
 
-function buildMaterials(quality: Quality, maps?: Partial<Record<Surface, SurfaceMaps>>): TrackMaterials {
+function buildMaterials(quality: Quality, seaLevel?: number, maps?: Partial<Record<Surface, SurfaceMaps>>): TrackMaterials {
   const standard = (name: Surface, fallback: string, roughness: number) => {
     const textures = maps?.[name];
     return new MeshStandardMaterial({ ...textures, color: textures?.map ? 0xffffff : fallback,
@@ -84,19 +120,19 @@ function buildMaterials(quality: Quality, maps?: Partial<Record<Surface, Surface
     grass: standard('grass', '#4E6B34', 1),
     gravel: standard('gravel', '#8C8270', 1),
     concrete: standard('concrete', '#9E9E98', .85),
-    terrain: terrainMaterial(maps?.grass?.map ?? solidTexture(0x4E6B34), maps?.rock?.map ?? solidTexture(0x6E6A63)),
+    terrain: terrainMaterial(maps?.grass?.map ?? solidTexture(0x4E6B34), maps?.rock?.map ?? solidTexture(0x6E6A63), seaLevel),
   };
   setTrackAnisotropy(materials, anisotropy);
   return materials;
 }
 
-export function createMaterials(assets: null, quality: Quality): TrackMaterials;
-export function createMaterials(assets: AssetManager, quality: Quality): Promise<TrackMaterials>;
-export function createMaterials(assets: AssetManager | null, quality: Quality) {
-  if (!assets) return buildMaterials(quality);
+export function createMaterials(assets: null, quality: Quality, seaLevel?: number): TrackMaterials;
+export function createMaterials(assets: AssetManager, quality: Quality, seaLevel?: number): Promise<TrackMaterials>;
+export function createMaterials(assets: AssetManager | null, quality: Quality, seaLevel?: number) {
+  if (!assets) return buildMaterials(quality, seaLevel);
   return assets.loadManifest().then(async manifest => {
     const surfaces = ['asphalt', 'grass', 'gravel', 'concrete', 'rock'] as const;
     const entries = await Promise.all(surfaces.map(async name => [name, await loadMaps(assets, manifest, name)] as const));
-    return buildMaterials(quality, Object.fromEntries(entries));
+    return buildMaterials(quality, seaLevel, Object.fromEntries(entries));
   });
 }

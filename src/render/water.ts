@@ -1,4 +1,5 @@
-import { Mesh, MeshPhysicalMaterial, PlaneGeometry, RepeatWrapping, Scene, Vector3, type WebGLRenderTarget } from 'three';
+import { Color, Mesh, MeshPhysicalMaterial, OrthographicCamera, PerspectiveCamera, PlaneGeometry, RepeatWrapping, Scene,
+  ShaderMaterial, Vector3, type WebGLRenderTarget } from 'three';
 import { Water } from 'three/examples/jsm/objects/Water.js';
 import type { AssetManager } from '@/assets/assetManager';
 import type { TrackData } from '@/track/types';
@@ -18,24 +19,91 @@ export async function buildWater(scene: Scene, track: TrackData, assets: AssetMa
   }) : new Mesh(geometry, new MeshPhysicalMaterial({
     color: sea.color, roughness: .28, metalness: 0, reflectivity: .18, envMapIntensity: .22,
   }));
+  // 规格未指定：远水在雾的尽头或相机远裁切距离的九成处融入同方向的天空。
+  const horizonEnd = { value: QUALITY[quality].viewDistance * .9 };
+  const horizonBlend = (depression: string) => `
+    #ifdef USE_FOG
+      float end = min(fogFar, horizonEnd);
+      float horizon = smoothstep(min(fogNear, 0.5 * end), end, vFogDepth);
+      // From a low shore camera, the fog range spans only a couple of pixels.
+      // Let the last degree above the surface converge to the same sky as well.
+      gl_FragColor.a *= (1.0 - horizon) * smoothstep(0.001, 0.025, ${depression});
+    #endif`;
   if (surface instanceof Water) {
     // Keep the animated mirror and sun glints, with deep-water scattering visible
     // even at the grazing angles seen from the road along the cliff.
     const material = surface.material;
+    material.uniforms.horizonEnd = horizonEnd;
     material.fragmentShader = material.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float horizonEnd;')
+      .replace('sunLight( surfaceNormal, eyeDirection, 100.0', 'sunLight( surfaceNormal, eyeDirection, 60.0')
       .replace('float rf0 = 0.3;', 'float rf0 = 0.02;')
       .replace(/vec3 scatter = [^;]+;\s*vec3 albedo = [^;]+;/,
-        `vec3 scatter = waterColor * (.90 + .22 * surfaceNormal.y + .12 * diffuseLight);
+        `float farW = smoothstep(10.0, 160.0, distance);
+         vec3 baseColor = mix(mix(waterColor, vec3(0.07, 0.30, 0.33), 0.5), waterColor, farW);
+         vec3 scatter = baseColor * (.90 + .22 * surfaceNormal.y + .12 * diffuseLight);
          vec3 reflection = reflectionSample / (1.0 + reflectionSample);
          vec3 albedo = scatter * getShadowMask() + reflection * (.012 + .065 * reflectance)
-           + .22 * specularLight;`);
+           + 0.7 * specularLight;`)
+      .replace('vec4( outgoingLight, alpha )', 'vec4(outgoingLight, alpha * mix(.58, 1.0, farW))')
+      .replace('#include <fog_fragment>', horizonBlend('eyeDirection.y'));
+  } else {
+    surface.material.onBeforeCompile = shader => {
+      shader.uniforms.horizonEnd = horizonEnd;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 seaPosition;')
+        .replace('#include <project_vertex>', '#include <project_vertex>\nseaPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 seaPosition;\nuniform float horizonEnd;')
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          vec3 toEye = cameraPosition - seaPosition;
+          float farW = smoothstep(10.0, 160.0, length(toEye));
+          diffuseColor.rgb = mix(mix(diffuseColor.rgb, vec3(.07, .30, .33), .5), diffuseColor.rgb, farW);
+          diffuseColor.a *= mix(.58, 1.0, farW);`)
+        .replace('#include <fog_fragment>', horizonBlend('normalize(toEye).y'));
+    };
   }
+  surface.material.transparent = true;
+  surface.material.onBeforeRender = (_renderer, _scene, camera) => {
+    if (camera instanceof PerspectiveCamera || camera instanceof OrthographicCamera) horizonEnd.value = camera.far * .9;
+  };
+  surface.renderOrder = -1;
   surface.name = 'sea';
   surface.rotation.x = -Math.PI / 2;
   surface.position.y = sea.level;
   surface.updateMatrix();
   surface.matrixAutoUpdate = false;
-  scene.add(surface);
+
+  // A grazing ray through transparent water can miss the finite seabed. Fill
+  // only those clear depth pixels, behind real sand and only within clear water.
+  const deepWater = new Mesh(geometry, new ShaderMaterial({
+    uniforms: { deepColor: { value: new Color(sea.color).multiplyScalar(.40) } },
+    transparent: true, depthWrite: false, fog: false,
+    vertexShader: `
+      varying vec3 seaPosition;
+      void main() {
+        seaPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+        vec4 clip = projectionMatrix * viewMatrix * vec4(seaPosition, 1.0);
+        gl_Position = clip.xyww;
+      }`,
+    fragmentShader: `
+      varying vec3 seaPosition;
+      uniform vec3 deepColor;
+      void main() {
+        float d = distance(cameraPosition, seaPosition);
+        if (d >= 200.0) discard;
+        float depression = (cameraPosition.y - seaPosition.y) / d;
+        float alpha = (1.0 - smoothstep(160.0, 200.0, d)) * smoothstep(.001, .025, depression);
+        gl_FragColor = vec4(deepColor, alpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  }));
+  deepWater.name = 'deep-water-background';
+  deepWater.renderOrder = surface.renderOrder - .5;
+  deepWater.matrix.copy(surface.matrix);
+  deepWater.matrixAutoUpdate = false;
+  scene.add(deepWater, surface);
 
   let reflection: WebGLRenderTarget | null = null;
   const previous = scene.onBeforeRender;

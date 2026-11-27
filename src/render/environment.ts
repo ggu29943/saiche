@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import type { AssetManager } from '@/assets/assetManager';
 import type { Track } from '@/track/track';
+import { createClouds } from './clouds';
 import { QUALITY, type Quality } from './quality';
 
 export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGLRenderer,
@@ -14,6 +15,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
   const pmrem = new THREE.PMREMGenerator(renderer);
   let reflection: THREE.WebGLRenderTarget;
   let sky: Sky | undefined;
+  let clouds: ReturnType<typeof createClouds> | undefined;
   try {
     if (hdr) {
       hdr.mapping = THREE.EquirectangularReflectionMapping;
@@ -25,7 +27,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
     } else {
       sky = new Sky();
       sky.name = 'procedural-sky';
-      sky.renderOrder = 1; // Shade the sky only where opaque terrain left the depth buffer clear.
+      sky.renderOrder = -3;
       sky.scale.setScalar(10000);
       const u = sky.material.uniforms;
       for (const [key, value] of Object.entries(env.skyFallback)) u[key].value = value;
@@ -49,13 +51,16 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
       const skyOnly = new THREE.Scene();
       skyOnly.add(sky);
       reflection = pmrem.fromScene(skyOnly, 0, .1, 20000);
-      scene.add(sky);
+      // In the game draw sky, clouds and distant water in that order, after opaque scenery.
+      sky.material.transparent = true;
+      clouds = createClouds(track.data, dir);
+      scene.add(sky, clouds.dome);
     }
   } finally {
     pmrem.dispose();
   }
   scene.environment = reflection.texture;
-  scene.environmentIntensity = env.ambientEnvIntensity * env.exposure;
+  scene.environmentIntensity = coastal ? env.ambientEnvIntensity * env.exposure : .45;
   scene.backgroundIntensity = env.exposure;
   scene.fog = new THREE.Fog(coastal ? '#D99D79' : env.fogColor, env.fogNear, env.fogFar);
 
@@ -86,6 +91,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
   if (marker) scene.add(marker);
 
   function update(carPos: THREE.Vector3, cameraPos = carPos) {
+    clouds?.update();
     const x = Math.round(carPos.dot(right) / texel) * texel;
     const y = Math.round(carPos.dot(up) / texel) * texel;
     sun.target.position.copy(right).multiplyScalar(x).addScaledVector(up, y).addScaledVector(dir, carPos.dot(dir));
@@ -97,6 +103,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
     scene.environment = scene.background = null;
     reflection.dispose();
     hdr?.dispose();
+    clouds?.dispose();
     if (sky) {
       sky.removeFromParent();
       sky.geometry.dispose();

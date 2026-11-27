@@ -4,9 +4,10 @@ import { AssetManager } from '../../src/assets/assetManager';
 import { CARS } from '../../src/data';
 import { CarView } from '../../src/render/carView';
 
-async function loadParkedModel(id, assets) {
+async function loadParkedModel(id, assets, scene) {
   const car = await CarView.load(CARS[id], 'valley', assets);
   if (car.source !== 'glb') throw new Error('Studio could not load the GLB for ' + id);
+  car.setPaintEnvironment(scene);
   return car.modelOffset.children[0];
 }
 
@@ -31,9 +32,8 @@ function lightStudio(scene, renderer) {
 }
 
 // Render the shipped GLB with the same materials and paint as the driving scene.
-// The model stays in its authored, wheel-on-ground pose for all four views.
+// The model stays in its authored, wheel-on-ground pose for every view.
 export async function createStudio(id) {
-  const model = await loadParkedModel(id, new AssetManager('/assets/'));
   const width = window.innerWidth;
   const height = window.innerHeight;
   const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -46,6 +46,7 @@ export async function createStudio(id) {
   scene.background = new THREE.Color('#aab5bc');
   scene.fog = new THREE.Fog(scene.background, 15, 44);
   lightStudio(scene, renderer);
+  const model = await loadParkedModel(id, new AssetManager('/assets/'), scene);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
     new THREE.MeshStandardMaterial({ color: '#7d8589', roughness: 0.97 }));
   floor.rotation.x = -Math.PI / 2;
@@ -76,7 +77,7 @@ export async function createStudio(id) {
     for (const z of [bounds.min.z, bounds.max.z]) corners.push(new THREE.Vector3(x, y, z));
   }
   const directions = {
-    front: [0.94, 0.46, 1.12], rear: [0.98, 0.50, -1.12], side: [1, 0, 0], top: [0, 1, 0],
+    front: [0.94, 0.46, 1.12], rear: [0.98, 0.50, -1.12], back: [0, 0, -1], side: [1, 0, 0], top: [0, 1, 0],
   };
   return view => {
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
@@ -109,13 +110,13 @@ export async function drawHeightComparison() {
   const slot = (width - 2 * margin) / ids.length;
   const centrePixel = i => margin + (i + 0.5) * slot;
   const assets = new AssetManager('/assets/');
-  const models = await Promise.all(ids.map(id => loadParkedModel(id, assets)));
 
   const scene = new THREE.Scene();
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setSize(width, height);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   lightStudio(scene, renderer);
+  const models = await Promise.all(ids.map(id => loadParkedModel(id, assets, scene)));
   models.forEach((model, i) => {
     const bounds = new THREE.Box3().setFromObject(model);
     const centerZ = (bounds.max.z + bounds.min.z) / 2;

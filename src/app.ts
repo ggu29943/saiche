@@ -93,6 +93,7 @@ export class App {
       buildTrackScene(track, display, assets), selection && CarView.load(selection.cfg, track.data.id, assets),
     ]);
     if (car && selection) {
+      car.setPaintEnvironment(level.scene);
       car.setPaint(selection.paintIndex);
       level.scene.add(car.carRoot);
     }

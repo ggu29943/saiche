@@ -1,4 +1,4 @@
-import { Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, Vector3, type Material } from 'three';
+import { Box3, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, Raycaster, Vector3, type Scene, type Material } from 'three';
 import { lerp } from '@/math/scalar';
 import type { V3 } from '@/math/vec3';
 import type { Q } from '@/math/quat';
@@ -10,10 +10,33 @@ import { buildPlaceholderCar } from './placeholderCar';
 const up = new Vector3(0, 1, 0);
 const axle = new Vector3(1, 0, 0);
 
+// Measure in the authored ground frame before the CG offset or suspension pose is applied.
+function measureHoodMount(model: Group) {
+  model.updateMatrixWorld(true);
+  const windscreens = new Box3();
+  const panels: Mesh[] = [];
+  const frontGlass = model.getObjectByName('body_windscreen');
+  model.traverse(node => {
+    if (!(node instanceof Mesh)) return;
+    const materials: Material[] = Array.isArray(node.material) ? node.material : [node.material];
+    if (materials.some(m => m.name === 'paint')) panels.push(node);
+    if (!frontGlass && materials.some(m => m.name === 'glass')) windscreens.expandByObject(node, true);
+  });
+  if (frontGlass) windscreens.setFromObject(frontGlass, true);
+  // Unlabelled third-party or empty models still get a finite mount.
+  const bounds = windscreens.isEmpty() ? new Box3().setFromObject(model) : windscreens;
+  if (bounds.isEmpty()) return new Vector3(0, 1.18, .95);
+  const z = (windscreens.isEmpty() ? bounds.getCenter(new Vector3()).z : windscreens.max.z) + .2;
+  const ray = new Raycaster(new Vector3(0, bounds.max.y + 1, z), new Vector3(0, -1, 0));
+  const hit = ray.intersectObjects(panels, false)[0];
+  return new Vector3(0, (hit?.point.y ?? bounds.max.y) + .25, z);
+}
+
 export class CarView {
   readonly carRoot = new Group();
   readonly modelOffset = new Group();
   readonly paint: MeshPhysicalMaterial;
+  readonly hoodMount: Vector3;
   readonly source: 'glb' | 'placeholder';
   private paintIndex = 0;
   private readonly brakeLights = new Set<MeshStandardMaterial>();
@@ -34,6 +57,7 @@ export class CarView {
 
   constructor(readonly cfg: CarConfig, loadedModel?: Group, trackId: TrackData['id'] = 'valley') {
     const model = loadedModel ?? buildPlaceholderCar(cfg);
+    this.hoodMount = measureHoodMount(model);
     this.source = loadedModel ? 'glb' : 'placeholder';
     this.carRoot.name = 'carRoot';
     this.modelOffset.name = 'modelOffset';
@@ -41,8 +65,8 @@ export class CarView {
     this.carRoot.add(this.modelOffset);
     this.modelOffset.add(model);
     this.paint = new MeshPhysicalMaterial({
-      name: 'paint', color: cfg.visual.paints[0], metalness: 0.35, roughness: 0.28,
-      clearcoat: 1, clearcoatRoughness: 0.04,
+      name: 'paint', color: cfg.visual.paints[0], metalness: 0.05, roughness: 0.35,
+      clearcoat: 1, clearcoatRoughness: 0.06,
     });
     const glass = new MeshPhysicalMaterial({
       name: 'glass', color: '#0A0C10', metalness: 0, roughness: 0.05,
@@ -87,6 +111,13 @@ export class CarView {
       const caliper = model.getObjectByName('caliper_' + id);
       return { wheel, rest: wheel.quaternion.clone(), caliper, caliperRest: caliper?.quaternion.clone() };
     });
+  }
+
+  setPaintEnvironment(scene: Scene) {
+    // A sky-only reflection probe otherwise illuminates the lower body like open sky.
+    this.paint.envMap = scene.environment;
+    this.paint.envMapRotation.copy(scene.environmentRotation);
+    this.paint.envMapIntensity = .30 * scene.environmentIntensity;
   }
 
   get selectedPaint() { return this.paintIndex; }

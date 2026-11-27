@@ -14,22 +14,24 @@ function beam(track: Track, side: number, wall: boolean, material: THREE.Materia
   const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
   const low = wall ? -2 : 0.55 - 0.31 / 2;
   const high = wall ? track.data.barrier.height : 0.55 + 0.31 / 2;
-  const thickness = wall ? 0.4 : 0.08;
-  // Corners around the cross section, clockwise viewed into the left barrier.
-  const corners = [[0,high],[0,low],[thickness,low],[thickness,high]];
+  // Cross-section of a folded W-beam. Its two crests catch the light along the road.
+  const front = [[.065,high],[0,.64],[.068,.55],[0,.46],[.065,low]];
+  const corners = wall ? [[0,high],[0,low],[.4,low],[.4,high]]
+    : [...front, ...front.map(([d,h]) => [d+.012,h]).reverse()];
+  const stride = corners.length * 2;
   for (let k=0; k<=track.count; k++) {
     const i = pmod(k,track.count), p = track.pos[i], left = track.left[i];
     const offset = side*track.barrierOffset(i);
     const x = p[0]+left[0]*offset, z = p[2]+left[2]*offset;
     const ground = track.heightOrEdge(x,z);
-    for (let face=0; face<4; face++) {
-      const nextFace = pmod(face+1,4);
+    for (let face=0; face<corners.length; face++) {
+      const nextFace = pmod(face+1,corners.length);
       for (const [depth,height] of [corners[face],corners[nextFace]]) {
         positions.push(x+left[0]*side*depth,ground+height,z+left[2]*side*depth);
         uvs.push(k*track.step/2, (face % 2 === 0 ? height : depth)/2);
       }
       if (!k) continue;
-      const current = k*8+face*2, previous = current-8;
+      const current = k*stride+face*2, previous = current-stride;
       if (side>0) indices.push(previous,previous+1,current, previous+1,current+1,current);
       else indices.push(previous,current,previous+1, previous+1,current,current+1);
     }
@@ -81,7 +83,7 @@ export function buildBarriers(track: Track, mats: TrackMaterials): THREE.Group {
   group.name = 'barriers';
   const wall = track.data.barrier.type === 'wall';
   const material = wall ? mats.concrete :
-    new THREE.MeshStandardMaterial({color:'#B8BCC2',metalness:0.9,roughness:0.35});
+    new THREE.MeshStandardMaterial({color:'#9EA3A8',metalness:0.6,roughness:0.45});
   group.add(beam(track,1,wall,material),beam(track,-1,wall,material));
   if (!wall) group.add(posts(track));
   return group;

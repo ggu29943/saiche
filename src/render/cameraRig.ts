@@ -10,11 +10,7 @@ const chaseParameters = {
   chase: { distance: 5.6, height: 1.75, lookAhead: 2, lookHeight: 0.9, fov: 62, speedFov: 10 },
   chaseFar: { distance: 7.6, height: 2.40, lookAhead: 2.5, lookHeight: 1.0, fov: 58, speedFov: 8 },
 };
-const mounts = {
-  hatch: { hood: [1.22, 0.35], bumper: [0.55, 2.20] },
-  coupe: { hood: [1.12, 0.45], bumper: [0.50, 2.25] },
-  rally: { hood: [1.25, 0.35], bumper: [0.58, 2.20] },
-};
+const bumperMounts = { hatch: [0.55, 2.20], coupe: [0.50, 2.25], rally: [0.58, 2.20] } as const;
 const up = new Vector3(0, 1, 0);
 const cameraFacing = new Quaternion().setFromAxisAngle(up, Math.PI);
 
@@ -42,8 +38,12 @@ export class CameraRig {
     const yaw = Math.atan2(this.forward.x, this.forward.z);
     let fov: number;
     if (this.mode === 'hood' || this.mode === 'bumper') {
-      const [height, z] = mounts[vehicle.cfg.id][this.mode];
-      camera.position.set(0, height, z).add(car.modelOffset.position).applyQuaternion(quaternion).add(position);
+      if (this.mode === 'hood') camera.position.copy(car.hoodMount);
+      else {
+        const [height, z] = bumperMounts[vehicle.cfg.id];
+        camera.position.set(0, height, z);
+      }
+      camera.position.add(car.modelOffset.position).applyQuaternion(quaternion).add(position);
       camera.quaternion.setFromAxisAngle(up, yaw).slerp(quaternion, 0.5).multiply(cameraFacing);
       fov = 72;
     } else {

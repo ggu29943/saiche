@@ -6,6 +6,7 @@ if (!input || !output || extra.length) {
   process.exitCode = 1;
 } else {
   const result = spawnSync('npx', ['gltf-transform', 'optimize', input, output, '--compress', 'meshopt',
+    '--flatten', 'false', '--join', 'false', '--palette', 'false', '--instance', 'false', '--simplify', 'false',
     '--texture-compress', 'webp', '--texture-size', '2048'], { stdio: 'inherit', shell: process.platform === 'win32' });
   if (result.error) console.error(result.error.message);
   process.exitCode = result.status ?? 1;

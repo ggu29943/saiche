@@ -23,7 +23,7 @@ function section(track: Track, sample: number): Strip[] {
   const asphalt: Vertex[] = [];
   for (let j=0; j<=8; j++) {
     const d = hw - 2*hw*j/8;
-    asphalt.push(vertex(d,(d+hw)/(2*hw),s/8,0.010));
+    asphalt.push(vertex(d,d/8,s/8,0.010));
   }
   const strips: Strip[] = [{ surface: 'asphalt', vertices: asphalt }];
   for (const side of [1,-1]) {

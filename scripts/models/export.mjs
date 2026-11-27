@@ -1,15 +1,20 @@
 import { randomUUID } from 'node:crypto';
 import { rename, rm, writeFile } from 'node:fs/promises';
 import { DoubleSide, Vector3 } from 'three';
-import { Document, NodeIO } from '@gltf-transform/core';
+import { createRequire } from 'node:module';
 import meshopt from 'meshoptimizer';
 
+const fromCLI = createRequire(import.meta.resolve('@gltf-transform/cli'));
+const { Document, NodeIO } = fromCLI('@gltf-transform/core');
+const { KHRMaterialsClearcoat } = fromCLI('@gltf-transform/extensions');
 const { MeshoptSimplifier } = meshopt;
 MeshoptSimplifier.useExperimentalFeatures = true;
 // These centre sections carry the specified roof, hood, rake and overhang.
 const dimensionedPanels = new Set(['bonnet', 'hood_scoop', 'scoop_lip', 'crowned_roof_panel',
-  'front_bumper', 'front_upper_fascia', 'front_splitter']);
+  'front_bumper', 'front_upper_fascia', 'front_splitter', 'rear_deck', 'rear_bumper', 'roof_spoiler_extension']);
 
+// Preserve the roof and bumper seams for inspection of the finished bodywork.
+const separatePanels = new Set(['crowned_roof_panel', 'roof_spoiler_extension', 'rear_deck', 'rear_bumper', 'front_bumper']);
 // The loft samples define the curves. Remove redundant triangles from flat or
 // nearly flat panels at export time while locking the seams to adjacent pieces.
 function compactSurface(batch) {
@@ -79,6 +84,7 @@ export async function writeCar(filename, body, wheels, calipers, config) {
   const buffer = document.createBuffer();
   document.getRoot().setDefaultScene(scene);
   const materials = new Map();
+  const clearcoat = document.createExtension(KHRMaterialsClearcoat);
 
   function materialFor(source) {
     if (materials.has(source)) return materials.get(source);
@@ -87,6 +93,10 @@ export async function writeCar(filename, body, wheels, calipers, config) {
       .setMetallicFactor(source.metalness)
       .setRoughnessFactor(source.roughness)
       .setDoubleSided(source.side === DoubleSide);
+    if (source.clearcoat) {
+      material.setExtension('KHR_materials_clearcoat', clearcoat.createClearcoat()
+        .setClearcoatFactor(source.clearcoat).setClearcoatRoughnessFactor(source.clearcoatRoughness));
+    }
     if (source.transparent) material.setAlphaMode('BLEND');
     if (source.emissive) {
       material.setEmissiveFactor(source.emissive.toArray().map(channel => Math.min(1, channel * source.emissiveIntensity)));
@@ -103,15 +113,19 @@ export async function writeCar(filename, body, wheels, calipers, config) {
     group.traverse(child => {
       if (!child.isMesh) return;
       const material = child.material;
-      if (!batches.has(material)) batches.set(material, { positions: [], normals: [], indices: [], locked: [] });
-      appendGeometry(batches.get(material), child);
+      // Individual panes sort independently in-game and remain inspectable in the GLB.
+      let key = material.name;
+      if (key === 'glass' || separatePanels.has(child.name)) key = child.name;
+      if (child.name === 'inlaid_rear_optic' && material.name === 'weatherstrip') key = 'tail_lamp_seal';
+      if (!batches.has(key)) batches.set(key, { material, positions: [], normals: [], indices: [], locked: [] });
+      appendGeometry(batches.get(key), child);
     });
-    return Array.from(batches, ([material, batch]) => {
-      const label = name + '_' + material.name;
+    return Array.from(batches, ([key, batch]) => {
+      const label = name + '_' + key;
       const accessor = (suffix, type, data) => document.createAccessor(label + suffix)
         .setBuffer(buffer).setType(type).setArray(data);
       const surface = compactSurface(batch);
-      const primitive = document.createPrimitive().setMaterial(materialFor(material))
+      const primitive = document.createPrimitive().setMaterial(materialFor(batch.material))
         .setAttribute('POSITION', accessor('_p', 'VEC3', surface.positions))
         .setAttribute('NORMAL', accessor('_n', 'VEC3', surface.normals))
         .setIndices(accessor('_i', 'SCALAR', surface.indices));
@@ -137,7 +151,7 @@ export async function writeCar(filename, body, wheels, calipers, config) {
       addAssembly('caliper_' + id, caliper, center);
     }
   }
-  const data = await new NodeIO().writeBinary(document);
+  const data = await new NodeIO().registerExtensions([KHRMaterialsClearcoat]).writeBinary(document);
   const temp = filename + '.' + randomUUID() + '.tmp';
   try {
     await writeFile(temp, data);

@@ -1,6 +1,6 @@
 import { v3, steps, mix, patch, bead, oval } from './geometry.mjs';
 
-function rearWing(body, m, center, span, chord, thickness, painted) {
+function rearWing(body, material, center, span, chord, thickness) {
   const sections = steps(36).map(t=>2*t-1);
   const chordwise = steps(20);
   const point = (u,t,upper) => {
@@ -9,7 +9,6 @@ function rearWing(body, m, center, span, chord, thickness, painted) {
     return v3(span*u, center.y - .026*u*u + .030*(1-t) + (upper ? foil : -foil*.48),
       center.z + .048*u*u + chord*taper*(t-.5));
   };
-  const material = painted ? m.paint : m.dark;
   for(const upper of [false,true]) {
     patch(body,'rear_airfoil',material,sections,chordwise,(u,t)=>point(u,t,upper),v3(0,upper?1:-1,0));
   }
@@ -26,27 +25,29 @@ export function addAero(body, car, f, c, m) {
       p.y+=.002; return p;
     });
     bead(body,'bonnet_shut_line',m.dark,bonnet,.0035,5);
-    if(car.id==='coupe') {
-      // The narrow vent behind the front wheel follows the rising flank crease.
-      for(let j=0;j<3;j++) {
-        const points=steps(14).map(t=>{
-          const p=f.side(mix(.65,.92,t)-.03*j,.67+.064*j-.080*t,sign);
-          p.x+=sign*.003; return p;
-        });
-        bead(body,'fender_vent',m.dark,points,.008);
-      }
-    }
   }
   if(car.id==='hatch') {
-    const anchor=c.roof(0,0);
-    const wing=v3(0,anchor.y+.018,anchor.z-.080);
-    for(const s of [-1,1]){
-      const from=c.roof(s*.83,.04);
-      bead(body,'roof_spoiler_strut',m.dark,[from,v3(s*.54,wing.y-.014,wing.z+.009)],.028,10);
+    const us = steps(26).map(t => 2*t - 1);
+    const chord = u => .18 - .018*u**4;
+    const lip = (u,t,upper) => {
+      const root = c.roof(u,0);
+      const p = root.clone();
+      p.z -= chord(u)*t;
+      p.y -= .012*t*t;
+      if (!upper) {
+        const underside = c.panePoint(false,u,.942);
+        p.addScaledVector(underside.sub(root), (1-t)**.7);
+        p.y -= .005*t*(1-t);
+      }
+      return p;
+    };
+    for (const upper of [true,false]) {
+      patch(body,'roof_spoiler_extension',m.paint,us,steps(18),(u,t)=>lip(u,t,upper),v3(0,upper?1:-1,0));
     }
-    rearWing(body,m,wing,.72,.25,.034,true);
-    const middle=v3(0,wing.y+.007,wing.z-.119);
-    bead(body,'high_mount_stop_light',m.light_brake,[middle.clone().add(v3(-.18,0,0)),middle.clone().add(v3(.18,0,0))],.012,8);
+    for (const side of [-1,1]) {
+      patch(body,'roof_spoiler_cap',m.paint,steps(18),[0,1],
+        (t,h)=>lip(side,t,false).lerp(lip(side,t,true),h),v3(side,0,0));
+    }
   } else if(car.id==='rally') {
     // The scoop starts flush just ahead of the axle. Its roof descends more
     // slowly than the bonnet, making room for the forward-facing opening.
@@ -91,7 +92,7 @@ export function addAero(body, car, f, c, m) {
       };
       patch(body,'spoiler_pedestal',m.paint,steps(20).map(t=>2*Math.PI*t),steps(12),post,v3(-1,0,0));
     }
-    rearWing(body,m,wing,.835,.235,.032,true);
+    rearWing(body,m.paint,wing,.835,.235,.032);
     for(const axis of [-f.axle,f.axle]) for(const sign of [-1,1]) {
       const z=axis-car.wheel.radius-.066;
       const flap=(u,t,reverse=0)=>v3(sign*(.645+.232*u),mix(.106,.48,t),
@@ -101,14 +102,5 @@ export function addAero(body, car, f, c, m) {
       patch(body,'mudflap_reverse',m.rubber,steps(6),steps(8),(u,t)=>flap(u,t,.006),v3(0,0,1));
       bead(body,'mudflap_reinforcement',m.dark,steps(10).map(u=>flap(u,.77,-.004)),.008);
     }
-  } else {
-    // The coupe's integral ducktail stays below the fastback roofline.
-    const z=f.tailZ+.085;
-    patch(body,'rear_deck_kick',m.paint,steps(26).map(t=>2*t-1),steps(12),(u,t)=>{
-      const zz=z+.14*t, x=u*f.width(zz)*.8;
-      const p=f.top(zz,x/(f.width(zz)*.955));
-      p.y+=.046*Math.sin(Math.PI*t)**.7*(1-u**4);
-      return p;
-    },v3(0,1,0));
   }
 }

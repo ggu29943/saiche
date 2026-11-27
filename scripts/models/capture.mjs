@@ -28,7 +28,7 @@ try {
     await page.evaluate(async id => {
       window.drawModel = await window.createStudio(id);
     }, id);
-    for (const view of ['front', 'rear', 'side', 'top']) {
+    for (const view of ['front', 'rear', 'back', 'side', 'top']) {
       await page.evaluate(view => window.drawModel(view), view);
       const file = 'car-' + id + '-' + view + '.png';
       await page.locator('canvas').screenshot({ path: join(output, file) });

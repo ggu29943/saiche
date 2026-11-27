@@ -1,5 +1,8 @@
 import { expect, test, vi } from 'vitest';
-import { Color, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import { readFile } from 'node:fs/promises';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { Box3, Color, Group, Mesh, MeshPhysicalMaterial, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import { EMPTY_MANIFEST } from '@/assets/manifest';
 import { CARS } from '@/data';
 import { Vehicle } from '@/physics/vehicle';
@@ -28,6 +31,7 @@ test('loads the manifest model, prepares all materials, and updates paint and la
     .toEqual(['wheel_FL', 'wheel_FR', 'wheel_RL', 'wheel_RR']);
   const material = (group: Group, name: string) => (group.getObjectByName(name) as Mesh).material as MeshStandardMaterial;
   expect(material(model, 'body')).toBeInstanceOf(MeshPhysicalMaterial);
+  expect(view.paint).toMatchObject({ metalness: .05, roughness: .35, clearcoat: 1, clearcoatRoughness: .06 });
   view.setPaint(2);
   expect(material(model, 'body')).toBe(view.paint);
   expect(view.paint.color.equals(new Color(cfg.visual.paints[2]))).toBe(true);
@@ -78,4 +82,24 @@ test('a missing or incomplete GLB uses the same animated placeholder hierarchy',
     expect(car.carRoot.getObjectByName('body')).toBeInstanceOf(Mesh);
     expect(car.carRoot.getObjectByName('wheel_RR')).toBeDefined();
   }
+});
+
+test.each([
+  ['hatch', 4.263189, 1.121, 1.425],
+  ['rally', 4.658799, 1.134, 1.238],
+  ['coupe', 4.443928, 1.032, 1.150],
+] as const)('the packed %s keeps its glazing, length and measured hood mount', async (id, length, y, z) => {
+  const bytes = await readFile(`public/assets/cars/${id}/${id}.glb`);
+  const gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).parseAsync(new Uint8Array(bytes).buffer, '');
+  expect(gltf.parser.json.extensionsRequired).toContain('EXT_meshopt_compression');
+  const bounds = new Box3().setFromObject(gltf.scene, true);
+  expect(bounds.max.z - bounds.min.z).toBeCloseTo(length, 4);
+  for (const pane of ['windscreen', 'rear_windscreen', 'door_glass_L', 'door_glass_R', 'quarter_glass_L', 'quarter_glass_R']) {
+    const window = gltf.scene.getObjectByName('body_' + pane) as Mesh;
+    expect(window.geometry.getAttribute('position').count).toBeGreaterThan(2);
+    expect(window.material).toMatchObject({ name: 'glass' });
+  }
+  const view = new CarView(CARS[id], gltf.scene);
+  expect(view.hoodMount.y).toBeCloseTo(y, 3);
+  expect(view.hoodMount.z).toBeCloseTo(z, 3);
 });

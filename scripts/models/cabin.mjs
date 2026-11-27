@@ -4,6 +4,10 @@ import { v3, mix, profile, smooth, steps, patch, bead, oval, mesh } from './geom
 export function buildCabin(body, car, f, m) {
   const [, backRoof, frontRoof] = f.cabin;
   const hatch = car.id === 'hatch';
+  const pillarEnd = hatch ? .027 : .078;
+  const sideSeal = hatch ? .007 : .013;
+  const rearMetal = hatch ? .975 : .953;
+  const rearAperture = rearMetal - .015;
   const rearGlassSlope = Math.tan(Math.PI / 6); // 30° from vertical
   // t runs from the C pillar to the A pillar. The hatch roof starts to
   // taper behind the B pillar and meets the rear screen 9 cm below its peak.
@@ -41,7 +45,8 @@ export function buildCabin(body, car, f, m) {
     const foot = f.belt(u,end);
     const corner = rail(end,1,1);
     const crown = 1-u*u;
-    const s = sideHeightFraction(end,h);
+    const edgeHeight = sideHeightFraction(end,h);
+    const s = !front && (hatch || car.id === 'rally') ? mix(h,edgeHeight,u*u) : edgeHeight;
     const bow = .012*Math.sin(Math.PI*s);
     const y = mix(foot.y,corner.y + f.roofCrown*crown,s) + bow*crown;
     const z = !front && hatch ? foot.z + (y - foot.y)*rearGlassSlope
@@ -52,17 +57,23 @@ export function buildCabin(body, car, f, m) {
   const tile = (name, material, at, outward, left, right, low, high, nx = 12, ny = 6) =>
     patch(body, name, material, range(left,right,nx), range(low,high,ny), at, outward);
   for (const sign of [-1,1]) {
-    const at = (u,v)=>rail(u,v,sign), normal = v3(sign,0,0);
+    const at = (u,v) => {
+      // Narrow the upper frame where the falling hatch roof meets the C pillar.
+      const rise = hatch ? .09 * (1-smooth(u/.42)) : 0;
+      const lift = v < .86 ? rise * smooth((v-.065)/.795) : rise * (1-v)/.14;
+      return rail(u,v+lift,sign);
+    };
+    const normal = v3(sign,0,0);
     const sidePane = (name, material, u0,u1,h0,h1) => tile(name,material,at,normal,u0,u1,h0,h1);
-    sidePane('side_window_sill',m.dark,0,1,0,.065);
+    sidePane('side_window_sill',m.paint,0,1,0,.054);
+    sidePane('side_window_seal',m.rubber,0,1,.054,.065);
     sidePane('upper_roof_rail',m.paint,0,1,.9,1);
     sidePane('roof_seal',m.rubber,0,1,.86,.9);
-    const pillarEnd = car.id === 'hatch' ? .105 : .078;
     sidePane('C_pillar',m.paint,0,pillarEnd,.065,.86);
-    sidePane('C_pillar_gasket',m.rubber,pillarEnd,pillarEnd+.013,.065,.86);
-    sidePane('rear_quarter_glass',m.glass,pillarEnd+.013,f.doorSplit-.017,.065,.86);
+    sidePane('C_pillar_gasket',m.rubber,pillarEnd,pillarEnd+sideSeal,.065,.86);
+    sidePane(sign > 0 ? 'quarter_glass_L' : 'quarter_glass_R',m.glass,pillarEnd+sideSeal,f.doorSplit-.017,.065,.86);
     sidePane('B_pillar',m.dark,f.doorSplit-.017,f.doorSplit+.026,.065,.86);
-    sidePane('door_glass',m.glass,f.doorSplit+.026,.933,.065,.86);
+    sidePane(sign > 0 ? 'door_glass_L' : 'door_glass_R',m.glass,f.doorSplit+.026,.933,.065,.86);
     sidePane('A_pillar_gasket',m.rubber,.933,.949,.065,.86);
     sidePane('A_pillar',m.paint,.949,1,.065,.86);
     bead(body,'window_belt_trim',m.dark, steps(25).map(t=>rail(t,.03,sign)), .008);
@@ -101,13 +112,23 @@ export function buildCabin(body, car, f, m) {
   for (const front of [false,true]) {
     const at = (u,v)=>panePoint(front,u,v);
     const normal = v3(0,.6,front?1:-1);
-    tile('painted_screen_pillar',m.paint,at,normal,-1,-.936,0,1);
-    tile('painted_screen_pillar',m.paint,at,normal,.936,1,0,1);
-    tile('screen_gasket',m.rubber,at,normal,-.936,-.915,0,1);
-    tile('screen_gasket',m.rubber,at,normal,.915,.936,0,1);
-    tile('screen_gasket',m.rubber,at,normal,-.915,.915,0,.060);
-    tile('screen_gasket',m.rubber,at,normal,-.915,.915,.948,1);
-    tile(front ? 'windscreen' : 'rear_windscreen',m.glass,at,normal,-.915,.915,.060,.948,24,14);
+    const metal = front ? .936 : rearMetal, clear = front ? .915 : rearAperture;
+    const bottom = !front && hatch ? .018 : .060, top = !front && hatch ? .985 : .948;
+    tile('painted_screen_pillar',m.paint,at,normal,-1,-metal,0,1);
+    tile('painted_screen_pillar',m.paint,at,normal,metal,1,0,1);
+    tile('screen_gasket',m.rubber,at,normal,-metal,-clear,0,1);
+    tile('screen_gasket',m.rubber,at,normal,clear,metal,0,1);
+    tile('screen_gasket',m.rubber,at,normal,-clear,clear,0,bottom);
+    tile('screen_gasket',m.rubber,at,normal,-clear,clear,top,1);
+    tile(front ? 'windscreen' : 'rear_windscreen',m.glass,at,normal,-clear,clear,bottom,top,32,20);
+    if (!front) {
+      // The printed heater traces sit on the inside of the curved rear pane.
+      for (let row = 1; row <= 7; row++) {
+        const h = mix(bottom, top, row / 8);
+        const inward = normal.clone().normalize().multiplyScalar(-.0014);
+        tile('backlight_heater',m.heater,(u,v)=>at(u,v).add(inward),normal,-clear+.024,clear-.024,h-.0011,h+.0011,32,1);
+      }
+    }
     if (front) {
       for (const shift of [-.40,.36]) {
         const points = steps(12).map(t => {
@@ -148,7 +169,7 @@ export function buildCabin(body, car, f, m) {
       }, v3(-sign,0,0), u0,u1,0,1,4,8);
     interiorPillar('A_pillar_inner', .943,1);
     interiorPillar('B_pillar_inner', f.doorSplit-.017,f.doorSplit+.026);
-    interiorPillar('C_pillar_inner', 0,car.id === 'hatch' ? .105 : .078);
+    interiorPillar('C_pillar_inner', 0,pillarEnd);
   }
   buildInterior(body, car, f, m);
   return { rail, roof, panePoint };
@@ -175,7 +196,7 @@ function seatLoft(body, name, material, cx, sections) {
 
 function buildInterior(body, car, f, m) {
   const floor = f.sill + .115;
-  const cockpitAdvance = car.id === 'coupe' ? .15 : 0;
+  const cockpitAdvance = car.id === 'coupe' ? .30 : 0;
   const atFloor = (u,t) => {
     const p = f.belt(u,t);
     return v3(p.x*.86, floor, mix(cockpitAdvance,p.z,.87));

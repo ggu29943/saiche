@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { Group } from 'three';
@@ -25,6 +26,14 @@ for(const id of ids.length ? ids : models){
   const dir=path.join(root,'public/assets/cars',id);
   await fs.mkdir(dir,{recursive:true});
   const glb=path.join(dir,id+'.glb');
-  await writeCar(glb,body,pair(buildWheel),pair(buildCaliper),car);
+  const staging=await fs.mkdtemp(path.join(dir,'.generate-'));
+  try {
+    const raw=path.join(staging,'source.glb'), packed=path.join(staging,id+'.glb');
+    await writeCar(raw,body,pair(buildWheel),pair(buildCaliper),car);
+    execFileSync(process.execPath,[path.join(root,'scripts/optimize-assets.mjs'),raw,packed],{stdio:'inherit'});
+    await fs.rename(packed,glb);
+  } finally {
+    await fs.rm(staging,{recursive:true,force:true});
+  }
   console.log(path.relative(root,glb)+' ('+(await fs.stat(glb)).size+' bytes)');
 }

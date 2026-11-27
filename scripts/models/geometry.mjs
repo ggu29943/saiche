@@ -72,8 +72,10 @@ export function makeMaterials(car) {
     return m;
   };
   return {
-    paint: coat('paint', car.visual.paints[0], 0.42, 0.25),
+    paint: new T.MeshPhysicalMaterial({ name: 'paint', color: car.visual.paints[0], metalness: .05,
+      roughness: .35, clearcoat: 1, clearcoatRoughness: .06 }),
     glass: coat('glass', '#182934', 0.16, 0.11, { transparent: true, opacity: 0.54, side: T.DoubleSide }),
+    heater: coat('heated_glass_traces', '#594638', 0.22, 0.54),
     dark: coat('satin_graphite', '#23272c', 0.22, 0.36),
     rubber: coat('weatherstrip', '#11161b', 0.02, 0.53),
     textile: coat('upholstery', '#303740', 0.02, 0.78),

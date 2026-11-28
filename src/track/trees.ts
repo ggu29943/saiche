@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { Quality } from '@/render/quality';
+import { lightFoliage, type CanopyLight } from '@/render/foliage';
 import { mulberry32 } from '@/math/rng';
 
 type Point = [number, number, number];
@@ -155,21 +157,48 @@ function treeGeometry(id: Species, withSprays: boolean) {
   return geometry;
 }
 
-export function makeTreeModel(name: string, atlas: THREE.Texture | null, billboard: THREE.Texture | null) {
+export function treeSize(name: string) {
+  return species[name === 'tree_b' || name === 'tree_c' ? name : 'tree_a'];
+}
+
+export function crossedCard(width: number, height: number) {
+  const card = new THREE.PlaneGeometry(width, height, 2, 2).translate(0, height / 2, 0);
+  // Trim only the empty upper corners of the three existing spruce/fir/pine cutouts.
+  const vertices = card.getAttribute('position'), uv = card.getAttribute('uv');
+  for (let i = 0; i < vertices.count; i++) {
+    const taper = 1 - .67 * Math.max(0, uv.getY(i) * 2 - 1);
+    vertices.setX(i, vertices.getX(i) * taper);
+    uv.setX(i, .5 + (uv.getX(i) - .5) * taper);
+  }
+  const cross = card.clone().rotateY(Math.PI / 2);
+  const geometry = mergeGeometries([card, cross])!;
+  card.dispose();
+  cross.dispose();
+  return geometry;
+}
+
+export function makeTreeModel(name: string, atlas: THREE.Texture | null, billboard: THREE.Texture | null, light: CanopyLight) {
   const id: Species = name === 'tree_b' || name === 'tree_c' ? name : 'tree_a';
   const { height, aspect } = species[id];
+  const size = new THREE.Vector2(height * aspect, height);
   const solid = new THREE.MeshLambertMaterial({map:atlas, alphaTest:0.36, side:THREE.DoubleSide});
-  const canopy = treeGeometry(id,true);
+  const sprays = treeGeometry(id,true);
   const proxy = treeGeometry(id,false);
   const plain = new THREE.MeshLambertMaterial({vertexColors:true});
   const leaves = new THREE.MeshLambertMaterial({map:billboard, alphaTest:0.38, side:THREE.DoubleSide});
-  const card = new THREE.PlaneGeometry(height*aspect,height).translate(0,height/2,0);
-  const cross = card.clone().rotateY(Math.PI/2);
-  const distant = mergeGeometries([card,cross])!;
-  card.dispose();
-  cross.dispose();
+  lightFoliage(solid, size, light, atlas ? 'sprays' : 'mesh');
+  lightFoliage(plain, size, light, 'mesh');
+  lightFoliage(leaves, size, light, 'card');
+  const distant = crossedCard(size.x, height);
 
-  return { canopy, solid, distant, leaves, proxy, plain, ready: Boolean(billboard), hasSprays: Boolean(atlas) };
+  const sprayCount = sprays.index!.count;
+  const shadowCard = distant.clone();
+  shadowCard.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(shadowCard.getAttribute('position').count * 3).fill(1), 3));
+  const canopy = mergeGeometries([sprays, shadowCard])!;
+  canopy.setDrawRange(0, sprayCount);
+  sprays.dispose();
+  shadowCard.dispose();
+  return { canopy, sprayCount, solid, distant, leaves, proxy, plain, ready: Boolean(billboard), hasSprays: Boolean(atlas) };
 }
 
 // Cutouts work from the roadside. From far overhead use opaque, low-poly crowns
@@ -178,6 +207,20 @@ export class TreeCluster extends THREE.LOD {
   constructor(private readonly model: ReturnType<typeof makeTreeModel>, private readonly proxy: THREE.InstancedMesh) {
     super();
     this.add(proxy);
+  }
+
+  setShadowDetail(quality: Quality) {
+    const near = this.levels[0].object as THREE.InstancedMesh;
+    const { canopy, sprayCount, leaves } = this.model;
+    // Medium draws the full needles in colour, but rasterizes their whole-tree
+    // alpha silhouette into the moving shadow map. Both ranges share the existing mesh.
+    near.onBeforeShadow = (_renderer, _object, _camera, _shadowCamera, _geometry, depth) => {
+      if (quality === 'medium' && leaves.map && depth instanceof THREE.MeshDepthMaterial) {
+        canopy.setDrawRange(sprayCount, canopy.index!.count - sprayCount);
+        depth.map = leaves.map;
+      }
+    };
+    near.onAfterShadow = () => { canopy.setDrawRange(0, sprayCount); };
   }
 
   override update(camera: THREE.Camera) {

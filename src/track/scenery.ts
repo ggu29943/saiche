@@ -5,11 +5,14 @@ import { smoothstep } from '@/math/scalar';
 import { QUALITY, type Quality } from '@/render/quality';
 import { nearestSample } from './terrain';
 import type { AssetManager } from '@/assets/assetManager';
-import { makeTreeModel, TreeCluster } from './trees';
+import { bakeCanopyShadows, distantTrees, type TreePoint } from './forest';
+import { buildDistantForest, obstructionAttribute } from './forestMesh';
+import { lightFoliage, type CanopyLight } from '@/render/foliage';
+import { makeTreeModel, TreeCluster, treeSize } from './trees';
 import type { Track } from './track';
 
 type Kind = 'trees' | 'rocks';
-interface Candidate { x: number; y: number; z: number; fromBarrier: number; model: string }
+interface Candidate extends TreePoint { fromBarrier: number }
 
 function candidates(track: Track, heightAt: (x: number, z: number) => number, kind: Kind) {
   const { seed } = track.data.scenery;
@@ -74,21 +77,35 @@ function instance(name: string, part: Part, matrices: THREE.InstancedBufferAttri
   return mesh;
 }
 
-function modelParts(model: THREE.Group, tree: boolean) {
+function modelParts(model: THREE.Group, tree: boolean, name: string, light: CanopyLight) {
   const parts: Part[] = [];
+  const form = treeSize(name), size = new THREE.Vector2(form.height * form.aspect, form.height);
+  const treeMaterials = new Map<THREE.Material, THREE.Material>();
+  function lightTreePart(source: THREE.Material) {
+    const cached = treeMaterials.get(source);
+    if (cached) return cached;
+    // glTF MASK foliage can also carry KHR_materials_unlit. Preserve the cutout
+    // and its colours while giving it the same lighting as the native canopy.
+    const mat = source instanceof THREE.MeshBasicMaterial ? new THREE.MeshLambertMaterial({
+      name: source.name, color: source.color, map: source.map, alphaMap: source.alphaMap,
+      alphaTest: source.alphaTest, vertexColors: source.vertexColors, opacity: source.opacity,
+      transparent: source.transparent, side: source.side, depthWrite: source.depthWrite,
+    }) : source;
+    const leaves = mat.alphaTest > 0 || source.userData.gltfAlphaMode === 'MASK';
+    if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshLambertMaterial) {
+      mat.emissive.setHex(0);
+      mat.emissiveMap = null;
+      lightFoliage(mat, size, light, leaves ? 'mesh' : 'bark');
+    }
+    if (leaves) { mat.alphaToCoverage = false; mat.side = THREE.DoubleSide; }
+    treeMaterials.set(source, mat);
+    return mat;
+  }
   model.updateMatrixWorld(true);
   model.traverseVisible(node => {
     if (!(node instanceof THREE.Mesh)) return;
-    for (const mat of Array.isArray(node.material) ? node.material : [node.material]) {
-      if (tree && mat instanceof THREE.MeshStandardMaterial) {
-        mat.emissive.setHex(0);
-        mat.emissiveMap = null;
-      }
-      if (tree && (mat.alphaTest > 0 || mat.userData.gltfAlphaMode === 'MASK')) {
-        mat.alphaToCoverage = false;
-        mat.side = THREE.DoubleSide;
-      }
-    }
+    const source: MeshMaterial = node.material;
+    const material = tree ? (Array.isArray(source) ? source.map(lightTreePart) : lightTreePart(source)) : source;
     // Bake the authored hierarchy once so every part shares the exact same instance matrices.
     const geometry = node.geometry.clone().applyMatrix4(node.matrixWorld);
     if (node.matrixWorld.determinant() < 0) {
@@ -100,7 +117,7 @@ function modelParts(model: THREE.Group, tree: boolean) {
         index.setX(i + 2, second);
       }
     }
-    parts.push({ geometry, material: node.material });
+    parts.push({ geometry, material });
   });
   return parts;
 }
@@ -117,28 +134,31 @@ function treeCells(items: Candidate[]) {
   return cells.values();
 }
 
-function treeLod(name: string, model: ReturnType<typeof makeTreeModel>, matrices: THREE.InstancedBufferAttribute, quality: Quality) {
+function treeLod(name: string, model: ReturnType<typeof makeTreeModel>, matrices: THREE.InstancedBufferAttribute, occlusion: THREE.InstancedBufferAttribute, quality: Quality) {
   const shadows = QUALITY[quality].treeShadows;
   const near = instance(name, { geometry: model.canopy, material: model.solid }, matrices, shadows);
   const far = instance(name + '-distant', { geometry: model.distant, material: model.leaves }, matrices, shadows);
   const proxy = instance(name + '-proxy', { geometry: model.proxy, material: model.plain }, matrices, shadows);
+  near.instanceColor = far.instanceColor = proxy.instanceColor = occlusion;
+  far.receiveShadow = false;
   far.visible = proxy.visible = false;
   const cluster = new TreeCluster(model, proxy);
   cluster.addLevel(near, 0);
-  cluster.addLevel(far, quality === 'low' ? 85 : 125, .10);
+  cluster.addLevel(far, quality === 'high' ? 125 : quality === 'medium' ? 93 : 85, .10);
+  cluster.setShadowDetail(quality);
   return cluster;
 }
 
-async function buildVariant(name: string, items: Candidate[], trees: boolean, seed: number, quality: Quality, assets: AssetManager) {
+async function buildVariant(name: string, items: Candidate[], trees: boolean, seed: number, quality: Quality, assets: AssetManager, light: CanopyLight) {
   const group = new THREE.Group();
   const model = await assets.loadScenery(name);
-  const parts = model ? modelParts(model, trees) : [];
+  const parts = model ? modelParts(model, trees, name, light) : [];
   let fallback: ReturnType<typeof makeTreeModel> | undefined;
   if (!model && trees) {
     const [sprays, card] = await Promise.all([
       assets.loadTexture('scenery/tree_sprays.png', true), assets.loadTexture('scenery/' + name + '.png', true),
     ]);
-    fallback = makeTreeModel(name, sprays, card);
+    fallback = makeTreeModel(name, sprays, card, light);
   } else if (!model) {
     parts.push({ geometry: new THREE.IcosahedronGeometry(1.2, 0).scale(1, .6, 1).translate(0, .45, 0),
       material: new THREE.MeshStandardMaterial({ color: '#7A7A72' }) });
@@ -150,9 +170,14 @@ async function buildVariant(name: string, items: Candidate[], trees: boolean, se
       center.divideScalar(batch.length);
     }
     const matrices = placements(batch, center, seed);
-    const cell = fallback ? treeLod(name, fallback, matrices, quality) : new THREE.Group();
+    const occlusion = trees ? obstructionAttribute(batch) : null;
+    const cell = fallback ? treeLod(name, fallback, matrices, occlusion!, quality) : new THREE.Group();
     if (!fallback) {
-      for (const part of parts) cell.add(instance(name, part, matrices, trees && QUALITY[quality].treeShadows));
+      for (const part of parts) {
+        const mesh = instance(name, part, matrices, trees && QUALITY[quality].treeShadows);
+        if (trees) mesh.instanceColor = occlusion;
+        cell.add(mesh);
+      }
     }
     cell.position.copy(center);
     cell.updateMatrix();
@@ -163,7 +188,7 @@ async function buildVariant(name: string, items: Candidate[], trees: boolean, se
 }
 
 export async function placeScenery(track: Track, heightAt: (x: number, z: number) => number,
-  quality: Quality, assets: AssetManager) {
+  quality: Quality, assets: AssetManager, light: CanopyLight) {
   const group = new THREE.Group();
   group.name = 'scenery';
   const seed = track.data.scenery.seed;
@@ -171,10 +196,15 @@ export async function placeScenery(track: Track, heightAt: (x: number, z: number
   for (const kind of ['trees', 'rocks'] as const) {
     const trees = kind === 'trees';
     const items = candidates(track, heightAt, kind).slice(0, trees ? QUALITY[quality].maxTrees : QUALITY[quality].maxRocks);
-    if (trees) console.info('[scenery] trees', items.length);
+    if (trees) {
+      const forest = distantTrees(track, heightAt, quality);
+      bakeCanopyShadows([...items, ...forest], track, heightAt);
+      console.info('[scenery] trees', items.length, 'distant', forest.length);
+      tasks.push(buildDistantForest(track, forest, assets, light));
+    }
     for (const name of track.data.scenery[kind].models) {
       const variant = items.filter(p => p.model === name);
-      if (variant.length) tasks.push(buildVariant(name, variant, trees, seed, quality, assets));
+      if (variant.length) tasks.push(buildVariant(name, variant, trees, seed, quality, assets, light));
     }
   }
   for (const variant of await Promise.all(tasks)) group.add(variant);

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import type { AssetManager } from '@/assets/assetManager';
 import type { Track } from '@/track/track';
+import { canopyLight } from './foliage';
 import { createClouds } from './clouds';
 import { QUALITY, type Quality } from './quality';
 
@@ -64,6 +65,7 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
   scene.backgroundIntensity = env.exposure;
   scene.fog = new THREE.Fog(coastal ? '#D99D79' : env.fogColor, env.fogNear, env.fogFar);
 
+  const canopy = canopyLight(renderer, reflection, scene.fog.color, scene.environmentIntensity, dir);
   const sun = new THREE.DirectionalLight(env.sunColor, env.sunIntensity * env.exposure);
   sun.name = 'sun';
   sun.castShadow = true;
@@ -117,5 +119,5 @@ export async function setupEnvironment(scene: THREE.Scene, renderer: THREE.WebGL
     scene.remove(sun, sun.target);
     sun.dispose();
   }
-  return { sun, update, setQuality, dispose };
+  return { sun, canopy, update, setQuality, dispose };
 }

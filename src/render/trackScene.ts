@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildBarriers } from '@/track/barriers';
 import { buildProps } from '@/track/props';
 import { placeScenery } from '@/track/scenery';
+import { TreeCluster } from '@/track/trees';
 import { buildTerrain } from '@/track/terrain';
 import type { Track } from '@/track/track';
 import { buildTrackMeshes } from '@/track/trackMesh';
@@ -29,7 +30,7 @@ export async function buildTrackScene(track: Track, display: RaceRenderer, asset
   const { mesh, heightAt } = buildTerrain(track, quality, mats);
   scene.add(mesh, buildTrackMeshes(track, mats), buildBarriers(track, mats));
   const [props, scenery] = await Promise.all([
-    buildProps(track, heightAt, assets), placeScenery(track, heightAt, quality, assets),
+    buildProps(track, heightAt, assets), placeScenery(track, heightAt, quality, assets, environment.canopy),
   ]);
   scene.add(props, scenery);
   function setQuality(next: Quality) {
@@ -37,6 +38,7 @@ export async function buildTrackScene(track: Track, display: RaceRenderer, asset
     water?.setQuality(next);
     setTrackAnisotropy(mats, QUALITY[next].anisotropy);
     scenery.traverse(node => {
+      if (node instanceof TreeCluster) node.setShadowDetail(next);
       if (node instanceof THREE.InstancedMesh && node.name.startsWith('tree_')) node.castShadow = QUALITY[next].treeShadows;
     });
   }

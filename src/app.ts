@@ -32,6 +32,7 @@ export class App {
   private readonly intervals: number[] = [];
   private previous = performance.now();
   private previousRender?: number;
+  private stepsSinceRender = 0;
   private fps = 0;
   constructor(readonly game: HTMLElement, private ui: HTMLElement) {
     const params = new URLSearchParams(location.search);
@@ -70,6 +71,7 @@ export class App {
   }
   private unloadTrack() {
     ++this.generation;
+    this.stepsSinceRender = 0;
     window.clearTimeout(this.cycleTimer);
     this.cycleTimer = undefined;
     this.sampler = undefined;
@@ -140,13 +142,18 @@ export class App {
     const display = this.display;
     const render = display?.renderer.info.render;
     const lastFrame = render?.frame;
-    const steps = this.drive?.draw(Math.min(dt / 1000, 0.1)) ?? 0;
+    this.stepsSinceRender += this.drive?.draw(Math.min(dt / 1000, 0.1)) ?? 0;
     this.viewer?.draw(dt / 1000);
 
-    // 规格未指定：渲染器跳过提交时，FPS 只记录实际绘制的帧。
-    if ((this.drive || this.viewer) && render?.frame !== lastFrame) this.recordFrame(now);
+    // CPU physics also runs between GPU frames. Report all steps for the last frame actually drawn.
+    if (render && (this.drive || this.viewer) && render.frame !== lastFrame) {
+      this.recordFrame(now);
+      this.stats?.update(this.fps, display.quality, render.calls, render.triangles, this.stepsSinceRender);
+      this.stepsSinceRender = 0;
+    } else if (!this.drive && !this.viewer) {
+      this.stats?.update(0, display?.quality ?? 'medium', 0, 0, 0);
+    }
     this.cycleTrack();
-    this.stats?.update(this.fps, display?.quality ?? 'medium', render?.calls ?? 0, render?.triangles ?? 0, steps);
     requestAnimationFrame(this.frame);
   };
 

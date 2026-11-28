@@ -66,11 +66,13 @@ export function terrainMaterial(grassAlbedo: THREE.Texture, rockAlbedo: THREE.Te
             vec3 beach = mix(sand * 0.55, sand, smoothstep(0.05, 0.45, y));
             land = mix(beach, land, smoothstep(0.4, 1.6, y));
             land *= exp(min(y, 0.0) * vec3(0.65, 0.30, 0.22));
-            if (abs(y) < 0.175) {
+            if (y > -0.24 && y < 0.45) {
               float n = 0.6 * valueNoise(vWPos.xz * 1.8 + shoreTime * vec2(.12, -.18)).x
                       + 0.4 * valueNoise(vWPos.xz * 6.2 + shoreTime * vec2(-.28, .07)).x;
-              float band = 1.0 - smoothstep(0.08, 0.175, abs(y));
-              land = mix(land, vec3(1.2), band * smoothstep(0.4, 0.65, n));
+              float lace = smoothstep(0.45, 0.75, n) * (1.0 - smoothstep(0.0, 0.22, abs(y + 0.02)));
+              float wash = 0.18 * smoothstep(-0.02, 0.08, y) * (1.0 - smoothstep(0.08, 0.45, y))
+                         * smoothstep(0.36, 0.72, n);
+              land = mix(land, vec3(0.86, 0.88, 0.86), min(lace + wash, 0.8));
             }
           }
         #endif

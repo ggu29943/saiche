@@ -11,13 +11,14 @@ export async function buildWater(scene: Scene, track: TrackData, assets: AssetMa
   const manifest = await assets.loadManifest();
   const normals = await assets.loadTexture(manifest.env[track.id]?.waterNormals);
   const geometry = new PlaneGeometry(10000, 10000);
+  const waterColor = '#1A4A6E';
   let size: number = QUALITY[quality].waterTex;
   if (normals) normals.wrapS = normals.wrapT = RepeatWrapping;
   const surface = normals ? new Water(geometry, {
     textureWidth: size, textureHeight: size, waterNormals: normals, sunDirection: new Vector3(...sunDirection).normalize(),
-    sunColor, waterColor: sea.color, distortionScale: 1.35, fog: true,
+    sunColor, waterColor, distortionScale: 3.2, fog: true,
   }) : new Mesh(geometry, new MeshPhysicalMaterial({
-    color: sea.color, roughness: .28, metalness: 0, reflectivity: .18, envMapIntensity: .22,
+    color: waterColor, roughness: .28, metalness: 0, reflectivity: .18, envMapIntensity: .22,
   }));
   // 规格未指定：远水在雾的尽头或相机远裁切距离的九成处融入同方向的天空。
   const horizonEnd = { value: QUALITY[quality].viewDistance * .9 };
@@ -33,17 +34,21 @@ export async function buildWater(scene: Scene, track: TrackData, assets: AssetMa
     // Keep the animated mirror and sun glints, with deep-water scattering visible
     // even at the grazing angles seen from the road along the cliff.
     const material = surface.material;
+    material.uniforms.size.value = .55;
     material.uniforms.horizonEnd = horizonEnd;
     material.fragmentShader = material.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform float horizonEnd;')
+      .replace('noise.xzy * vec3( 1.5, 1.0, 1.5 )', 'noise.xzy * vec3(3.2, 1.0, 3.2)')
       .replace('sunLight( surfaceNormal, eyeDirection, 100.0', 'sunLight( surfaceNormal, eyeDirection, 60.0')
       .replace('float rf0 = 0.3;', 'float rf0 = 0.02;')
       .replace(/vec3 scatter = [^;]+;\s*vec3 albedo = [^;]+;/,
         `float farW = smoothstep(10.0, 160.0, distance);
-         vec3 baseColor = mix(mix(waterColor, vec3(0.07, 0.30, 0.33), 0.5), waterColor, farW);
-         vec3 scatter = baseColor * (.90 + .22 * surfaceNormal.y + .12 * diffuseLight);
+         vec3 baseColor = mix(mix(waterColor, vec3(0.08, 0.30, 0.36), 0.2), waterColor, farW);
+         float facing = clamp(dot(surfaceNormal, eyeDirection), 0.0, 1.0);
+         vec3 scatter = baseColor * (.55 + .75 * surfaceNormal.y) * (.75 + .5 * facing);
          vec3 reflection = reflectionSample / (1.0 + reflectionSample);
-         vec3 albedo = scatter * getShadowMask() + reflection * (.012 + .065 * reflectance)
+         reflection *= mix(1.0, .65, smoothstep(100.0, 240.0, distance));
+         vec3 albedo = scatter * getShadowMask() + reflection * (.035 + .22 * reflectance)
            + 0.7 * specularLight;`)
       .replace('vec4( outgoingLight, alpha )', 'vec4(outgoingLight, alpha * mix(.58, 1.0, farW))')
       .replace('#include <fog_fragment>', horizonBlend('eyeDirection.y'));
@@ -58,7 +63,7 @@ export async function buildWater(scene: Scene, track: TrackData, assets: AssetMa
         .replace('#include <color_fragment>', `#include <color_fragment>
           vec3 toEye = cameraPosition - seaPosition;
           float farW = smoothstep(10.0, 160.0, length(toEye));
-          diffuseColor.rgb = mix(mix(diffuseColor.rgb, vec3(.07, .30, .33), .5), diffuseColor.rgb, farW);
+          diffuseColor.rgb = mix(mix(diffuseColor.rgb, vec3(.08, .30, .36), .2), diffuseColor.rgb, farW);
           diffuseColor.a *= mix(.58, 1.0, farW);`)
         .replace('#include <fog_fragment>', horizonBlend('normalize(toEye).y'));
     };
@@ -77,7 +82,7 @@ export async function buildWater(scene: Scene, track: TrackData, assets: AssetMa
   // A grazing ray through transparent water can miss the finite seabed. Fill
   // only those clear depth pixels, behind real sand and only within clear water.
   const deepWater = new Mesh(geometry, new ShaderMaterial({
-    uniforms: { deepColor: { value: new Color(sea.color).multiplyScalar(.40) } },
+    uniforms: { deepColor: { value: new Color(waterColor).multiplyScalar(.40) } },
     transparent: true, depthWrite: false, fog: false,
     vertexShader: `
       varying vec3 seaPosition;

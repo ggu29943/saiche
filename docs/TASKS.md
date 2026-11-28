@@ -194,7 +194,7 @@
 ### T20 景物与海面占位
 - **依赖**：T19
 - **文件**：`src/track/scenery.ts`（04 §4.6，只做占位几何）、`src/render/water.ts`（04 §4.8，只做占位材质版本）
-- **验收**：valley 在 medium 画质下的树木数量 = `min(候选数, 2500)`，用 `console.info('[scenery] trees', n)` 打印出来，并把这个数值记进提交信息；coast 能看到海面。
+- **验收**：valley 在 medium 画质下的树木数量 = `min(候选数, 4000)`，用 `console.info('[scenery] trees', n)` 打印出来，并把这个数值记进提交信息；coast 能看到海面。
 - **提交**：`T20: 景物与海面`
 
 ---

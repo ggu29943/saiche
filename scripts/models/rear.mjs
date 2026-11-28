@@ -1,4 +1,5 @@
 import { clamp, mix, patch, smooth, steps, v3 } from './geometry.mjs';
+import { buildExhaust, exhaustOpenings } from './exhaust.mjs';
 
 // Optical apertures are dimensioned in metres on the rear elevation.
 const optics = {
@@ -12,6 +13,8 @@ export function buildRearFascia(body, id, shell, m) {
   const continuous = id === 'coupe';
   const at = (u, t) => shell.end(false, u, t);
   const fraction = (u, y) => (y - shell.bumperFloor) / (at(u, 1).y - shell.bumperFloor);
+  const openings = exhaustOpenings(id, at, shell.bumperFloor);
+  const lowerTrim = u => .17 * (1-smooth((Math.abs(u)-.66)/.27));
   const axisY = x => design.y + (continuous ? .023 * (Math.abs(x) / .85)**3
     : .007 * clamp((Math.abs(x) - design.center + design.width/2) / design.width));
   // Solve the tapered fascia's width at each lamp endpoint, not at the sill.
@@ -39,6 +42,7 @@ export function buildRearFascia(body, id, shell, m) {
   };
   const sideRows = new Set([0,1]), deckUs = new Set([-1,0,1]);
   const cuts = [-1, -shell.beltLimit, 0, shell.beltLimit, 1];
+  for (const opening of openings) cuts.push(opening.left, opening.right);
   for (const t of steps(9)) {
     const u = .66 + .34*Math.sin(t*Math.PI/2);
     cuts.push(-u,u);
@@ -79,8 +83,12 @@ export function buildRearFascia(body, id, shell, m) {
         normals.setXYZ(i++,n.x,n.y,n.z);
       }
     }
-    const lowerTrim = u => .17 * (1-smooth((Math.abs(u)-.66)/.27));
-    band('lower_valance',m.dark,steps(3),(u,s)=>s*lowerTrim(u));
+    const opening = openings.find(o => left >= o.left && right <= o.right);
+    if (opening) {
+      for (const u of sections) opening.columns.add(u);
+    } else {
+      band('lower_valance',m.dark,steps(3),(u,s)=>s*lowerTrim(u));
+    }
     band('rear_bumper',m.paint,steps(6),(u,s)=>mix(lowerTrim(u),shell.bumperBelt,s));
     band('rear_bumper',m.paint,steps(7),(u,s)=>mix(shell.bumperBelt,bounds(u)[0],s));
     band('rear_bumper',m.paint,steps(12),(u,s)=>mix(bounds(u)[1],1,Math.sin(s*Math.PI/2)));
@@ -105,5 +113,6 @@ export function buildRearFascia(body, id, shell, m) {
       band('inlaid_rear_optic',material,steps(2).map(v=>mix(from,to,v)),inAperture,depth);
     }
   }
+  for (const opening of openings) buildExhaust(body, opening, at, fraction, lowerTrim, m);
   return { sideRows: [...sideRows].sort((a,b)=>a-b), deckUs: [...deckUs].sort((a,b)=>a-b) };
 }

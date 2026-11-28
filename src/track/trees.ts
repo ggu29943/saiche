@@ -158,25 +158,17 @@ function treeGeometry(id: Species, withSprays: boolean) {
 export function makeTreeModel(name: string, atlas: THREE.Texture | null, billboard: THREE.Texture | null) {
   const id: Species = name === 'tree_b' || name === 'tree_c' ? name : 'tree_a';
   const { height, aspect } = species[id];
-  const solid = new THREE.MeshLambertMaterial({alphaTest:0.36, side:THREE.DoubleSide});
+  const solid = new THREE.MeshLambertMaterial({map:atlas, alphaTest:0.36, side:THREE.DoubleSide});
   const canopy = treeGeometry(id,true);
   const proxy = treeGeometry(id,false);
   const plain = new THREE.MeshLambertMaterial({vertexColors:true});
-  const leaves = new THREE.MeshBasicMaterial({alphaTest:0.38, side:THREE.DoubleSide});
+  const leaves = new THREE.MeshLambertMaterial({map:billboard, alphaTest:0.38, side:THREE.DoubleSide});
   const card = new THREE.PlaneGeometry(height*aspect,height).translate(0,height/2,0);
   const cross = card.clone().rotateY(Math.PI/2);
   const distant = mergeGeometries([card,cross])!;
   card.dispose();
   cross.dispose();
 
-  if (atlas) {
-    solid.map = atlas;
-    // Needles scatter a little skylight through the back of the branch.
-    solid.emissive.setHex(0xffffff);
-    solid.emissiveMap = atlas;
-    solid.emissiveIntensity = 0.12;
-  }
-  leaves.map = billboard;
   return { canopy, solid, distant, leaves, proxy, plain, ready: Boolean(billboard), hasSprays: Boolean(atlas) };
 }
 

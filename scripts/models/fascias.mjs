@@ -1,5 +1,4 @@
-import { LatheGeometry, Vector2 } from 'three';
-import { bead, mesh, mix, patch, steps, v3 } from './geometry.mjs';
+import { bead, mix, patch, steps, v3 } from './geometry.mjs';
 
 // Fascia hardpoints live on the stamped bumper: u is signed half-width, v is
 // height from sill to deck. Each concentric layer stands clear of the last.
@@ -207,20 +206,6 @@ function frontSplitter(body, shape, m) {
   }
 }
 
-function exhaust(body, shape, m, u, rx, ry) {
-  const center = shape.end(false,u,.18);
-  // Keep the rolled lip inside the original bumper-to-bumper envelope.
-  center.z = Math.max(center.z, shape.rearTipZ + .040);
-  // Rolled, open steel tube with a dark inner sleeve. The tube axis is -Z.
-  const ring = (name, mat, profile) => {
-    const geo = new LatheGeometry(profile.map(([d,r])=>new Vector2(r,d)),32);
-    geo.rotateX(-Math.PI / 2).scale(rx,ry,1).translate(center.x,center.y,center.z);
-    return mesh(body,name,mat,geo);
-  };
-  ring('exhaust_tip',m.chrome,[[-.017,.94],[.034,1],[.040,.96],[.040,.80],[.034,.77],[.028,.78]]);
-  ring('exhaust_bore',m.rubber,[[.029,.785],[-.016,.785],[-.016,.001]]);
-}
-
 export function addFascias(body, car, shape, m) {
   grilleInsert(body,shape,m,apertures[car.id],car.id);
   for (const sgn of [-1,1]) {
@@ -240,9 +225,4 @@ export function addFascias(body, car, shape, m) {
   });
   bead(body,'bumper_shut_line',m.dark,seam,.0025,6);
   frontSplitter(body,shape,m);
-  if (car.id==='coupe') {
-    for (const s of [-1,1]) exhaust(body,shape,m,s*.72,.083,.037);
-  } else if (car.id==='hatch') {
-    for (const u of [.60,.75]) exhaust(body,shape,m,u,.043,.036);
-  } else exhaust(body,shape,m,.70,.065,.060);
 }

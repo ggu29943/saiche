@@ -14,11 +14,13 @@ interface Candidate { x: number; y: number; z: number; fromBarrier: number; mode
 function candidates(track: Track, heightAt: (x: number, z: number) => number, kind: Kind) {
   const { seed } = track.data.scenery;
   const cfg = track.data.scenery[kind];
+  const baseDensity = kind === 'trees' ? { valley: .85, coast: .45 }[track.data.id] : cfg.density;
   const rng = mulberry32(seed + (kind === 'trees' ? 0 : 7777));
   const xs = track.pos.map(p => p[0]), zs = track.pos.map(p => p[2]);
   const size = track.data.terrain.size;
-  const xMin = (Math.min(...xs) + Math.max(...xs) - size) / 2;
-  const zMin = (Math.min(...zs) + Math.max(...zs) - size) / 2;
+  const xLow = Math.min(...xs), xHigh = Math.max(...xs), zLow = Math.min(...zs), zHigh = Math.max(...zs);
+  const xMin = (xLow + xHigh - size) / 2, zMin = (zLow + zHigh - size) / 2;
+  const reach = cfg.maxFromBarrier + Math.max(...track.hw) + track.data.runoffWidth;
   const sea = track.data.environment.sea;
   const result: Candidate[] = [];
   for (let gx = xMin; gx < xMin + size; gx += cfg.spacing) {
@@ -26,10 +28,12 @@ function candidates(track: Track, heightAt: (x: number, z: number) => number, ki
       const x = gx + (rng() - 0.5) * cfg.spacing * 0.9;
       const z = gz + (rng() - 0.5) * cfg.spacing * 0.9;
       const r = rng();
+      // All cells consume the same random values. Only points within reach can survive the distance test.
+      if (r >= baseDensity || x < xLow - reach || x > xHigh + reach || z < zLow - reach || z > zHigh + reach) continue;
       const { index, distance } = nearestSample(track, x, z);
       const fromBarrier = distance - track.barrierOffset(index);
       if (fromBarrier < cfg.minFromBarrier || fromBarrier > cfg.maxFromBarrier) continue;
-      const density = cfg.density * (1 - 0.6 * smoothstep(cfg.minFromBarrier, cfg.maxFromBarrier, fromBarrier));
+      const density = baseDensity * (1 - 0.6 * smoothstep(cfg.minFromBarrier, cfg.maxFromBarrier, fromBarrier));
       if (r >= density) continue;
       const ground = heightAt(x, z);
       if (sea && ground < sea.level + 1) continue;
@@ -76,6 +80,10 @@ function modelParts(model: THREE.Group, tree: boolean) {
   model.traverseVisible(node => {
     if (!(node instanceof THREE.Mesh)) return;
     for (const mat of Array.isArray(node.material) ? node.material : [node.material]) {
+      if (tree && mat instanceof THREE.MeshStandardMaterial) {
+        mat.emissive.setHex(0);
+        mat.emissiveMap = null;
+      }
       if (tree && (mat.alphaTest > 0 || mat.userData.gltfAlphaMode === 'MASK')) {
         mat.alphaToCoverage = false;
         mat.side = THREE.DoubleSide;

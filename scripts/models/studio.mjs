@@ -77,7 +77,7 @@ export async function createStudio(id) {
     for (const z of [bounds.min.z, bounds.max.z]) corners.push(new THREE.Vector3(x, y, z));
   }
   const directions = {
-    front: [0.94, 0.46, 1.12], rear: [0.98, 0.50, -1.12], back: [0, 0, -1], side: [1, 0, 0], top: [0, 1, 0],
+    front: [0.94, 0.46, 1.12], rear: [0.82, 0.32, -1.16], back: [0, 0, -1], side: [1, 0, 0], top: [0, 1, 0],
   };
   return view => {
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);

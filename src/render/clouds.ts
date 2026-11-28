@@ -4,7 +4,7 @@ import valueNoise from './valueNoise.glsl?raw';
 
 const palettes = {
   valley: { threshold: .50, light: '#FFFFFF', shade: '#9AA6B4' },
-  coast: { threshold: .52, light: '#FFB48A', shade: '#6E5A70' },
+  coast: { threshold: .52, light: '#FFB48A', shade: '#7A6560' },
 };
 
 export function createClouds(track: TrackData, sunDirection: Vector3) {
@@ -13,6 +13,7 @@ export function createClouds(track: TrackData, sunDirection: Vector3) {
   // 规格未指定：以 900 m 的云层高度换算视差和风速，水平风向量取 (2, 1.5) m/s。
   const material = new ShaderMaterial({
     side: BackSide, transparent: true, depthWrite: false, fog: false,
+    defines: track.id === 'valley' ? { VALLEY_BACKLIGHT: 1 } : {},
     uniforms: {
       elapsed, threshold: { value: threshold }, sunDirection: { value: sunDirection },
       sunColor: { value: new Color(track.environment.sunColor) },
@@ -61,9 +62,19 @@ export function createClouds(track: TrackData, sunDirection: Vector3) {
 
         float lighting = clamp(.64 - .86 * field.y - .16 * cover, .02, 1.0);
         vec3 color = mix(shadeColor, lightColor, lighting);
-        float forward = pow(max(dot(dir, sunDirection), 0.0), 7.0);
+        float sunAlignment = max(dot(dir, sunDirection), 0.0);
+        float forward = pow(sunAlignment, 7.0);
         float rim = (1.0 - smoothstep(threshold + .035, threshold + .17, field.x)) * forward;
         color += sunColor * (1.8 * rim);
+        #ifdef VALLEY_BACKLIGHT
+          float backlight = smoothstep(.4, .95, sunAlignment);
+          color += lightColor * (.33 * backlight * (1.0 - .5 * lighting));
+          // The tapered edge still has enough opacity to catch transmitted sunlight.
+          float density = field.x - threshold;
+          float edge = smoothstep(.025, .065, density) * (1.0 - smoothstep(.07, .14, density));
+          float sunward = clamp(.55 - field.y, .1, 1.0);
+          color += sunColor * (.90 * edge * sunward * backlight);
+        #endif
         gl_FragColor = vec4(color, alpha * .96);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>

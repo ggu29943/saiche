@@ -6,7 +6,7 @@ import type { Track } from './track';
 import { treeSize } from './trees';
 
 export interface TreePoint {
-  x: number; y: number; z: number; model: string;
+  x: number; y: number; z: number; model: string; scale: number;
   sunFloor?: [number, number, number];
 }
 type HeightAt = (x: number, z: number) => number;
@@ -28,7 +28,7 @@ export function distantTrees(track: Track, heightAt: HeightAt, quality: Quality)
     const x = x0 + (i + .04 + .92 * hash2(i, j, seed + 91)) * spacing;
     const z = z0 + (j + .04 + .92 * hash2(i, j, seed + 92)) * spacing;
     const grove = .72 * valueNoise(x / 138, z / 138, seed + 93) + .28 * valueNoise(x / 49, z / 49, seed + 94);
-    const density = sea ? .50 * smoothstep(-.30, .48, grove) : .78 * smoothstep(-.43, .32, grove);
+    const density = sea ? .75 * smoothstep(-.30, .48, grove) : .78 * smoothstep(-.43, .32, grove);
     const roll = hash2(i, j, seed + 95);
     if (roll >= density * limit / QUALITY.high.maxForestTrees) continue;
     const y = heightAt(x, z);
@@ -38,13 +38,10 @@ export function distantTrees(track: Track, heightAt: HeightAt, quality: Quality)
     const slope = Math.hypot(heightAt(x + 5, z) - heightAt(x - 5, z), heightAt(x, z + 5) - heightAt(x, z - 5)) / 10;
     if (slope > .70) continue;
     const model = trees.models[Math.floor(hash2(i, j, seed + 96) * trees.models.length)];
-    points.push({ x, y: y - .3, z, model, rank: roll / density });
+    points.push({ x, y: y - .3, z, model, scale: 1, rank: roll / density });
   }
   return points.length > limit ? points.sort((a, b) => a.rank - b.rank).slice(0, limit) : points;
 }
-
-export const treeScale = (p: TreePoint, seed: number) =>
-  .8 + .4 * hash2(Math.round(p.x), Math.round(p.z), seed + 2);
 
 // Sweep from the sun downwind. Each one-metre strip stores the highest crown silhouette
 // seen along that ray. Sample it BEFORE adding the current crown, so it cannot shadow itself.
@@ -52,7 +49,7 @@ export function bakeCanopyShadows(trees: TreePoint[], track: Track, heightAt: He
   const [sx, sy, sz] = track.data.environment.sunDirection;
   const horizontal = Math.hypot(sx, sz), dx = sx / horizontal, dz = sz / horizontal, rise = sy / horizontal;
   const along = (p: TreePoint) => p.x * dx + p.z * dz;
-  const bounds = forestBounds(track), seed = track.data.scenery.seed;
+  const bounds = forestBounds(track);
   const corners = [bounds.x, bounds.x + bounds.size].flatMap(x => [bounds.z, bounds.z + bounds.size].map(z => x * dz - z * dx));
   const origin = Math.floor(Math.min(...corners)) - 16;
   const canopy = new Float32Array(Math.ceil(Math.max(...corners)) - origin + 16).fill(-Infinity);
@@ -62,7 +59,7 @@ export function bakeCanopyShadows(trees: TreePoint[], track: Track, heightAt: He
   const step = bounds.size / QUALITY.high.terrainSegments / 2;
   for (const p of [...trees].sort((a, b) => along(b) - along(a))) {
     const distance = along(p), across = p.x * dz - p.z * dx - origin;
-    const size = treeSize(p.model), height = size.height * treeScale(p, seed), radius = height * size.aspect / 2;
+    const size = treeSize(p.model), height = size.height * p.scale, radius = height * size.aspect / 2;
     const floor = (offset: number) => {
       let blocked = canopy[Math.round(across + offset)] + distance * rise;
       const x0 = p.x + offset * dz, z0 = p.z - offset * dx;

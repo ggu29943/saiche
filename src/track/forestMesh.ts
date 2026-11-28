@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { AssetManager } from '@/assets/assetManager';
 import { hash2 } from '@/math/noise';
 import { lightFoliage, type CanopyLight } from '@/render/foliage';
-import { forestBounds, treeScale, type TreePoint } from './forest';
+import { forestBounds, type TreePoint } from './forest';
 import type { Track } from './track';
 import { crossedCard, treeSize } from './trees';
 
@@ -52,7 +52,7 @@ export async function buildDistantForest(track: Track, trees: TreePoint[], asset
     mesh.name = 'forest-tile-' + tile;
     mesh.position.set(x + (tile % 4 + .5) * size / 4, 0, z + (Math.floor(tile / 4) + .5) * size / 4);
     batch.forEach((p, i) => {
-      const form = treeSize(p.model), height = form.height * treeScale(p, seed);
+      const form = treeSize(p.model), height = form.height * p.scale;
       pose.position.set(p.x - mesh.position.x, p.y, p.z - mesh.position.z);
       pose.scale.set(height * form.aspect, height, height * form.aspect);
       pose.rotation.y = hash2(Math.round(p.x), Math.round(p.z), seed + 1) * 2 * Math.PI;

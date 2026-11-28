@@ -9,6 +9,7 @@ import { bakeCanopyShadows, distantTrees, type TreePoint } from './forest';
 import { buildDistantForest, obstructionAttribute } from './forestMesh';
 import { lightFoliage, type CanopyLight } from '@/render/foliage';
 import { makeTreeModel, TreeCluster, treeSize } from './trees';
+import { assignTreeScales } from './treeScales';
 import type { Track } from './track';
 
 type Kind = 'trees' | 'rocks';
@@ -42,6 +43,7 @@ function candidates(track: Track, heightAt: (x: number, z: number) => number, ki
       if (sea && ground < sea.level + 1) continue;
       const variant = hash2(Math.round(x * 10), Math.round(z * 10), seed);
       result.push({ x, y: ground - (kind === 'trees' ? 0.3 : 0.2), z, fromBarrier,
+        scale: kind === 'rocks' ? .8 + .4 * hash2(Math.round(x), Math.round(z), seed + 2) : 1,
         model: cfg.models[Math.floor(variant * cfg.models.length)] });
     }
   }
@@ -51,10 +53,10 @@ function candidates(track: Track, heightAt: (x: number, z: number) => number, ki
 function placements(items: Candidate[], center: THREE.Vector3, seed: number) {
   const matrices = new THREE.InstancedBufferAttribute(new Float32Array(items.length * 16), 16);
   const pose = new THREE.Object3D();
-  items.forEach(({ x, y, z }, i) => {
+  items.forEach(({ x, y, z, scale }, i) => {
     pose.position.set(x, y, z).sub(center);
     pose.rotation.y = hash2(Math.round(x), Math.round(z), seed + 1) * 2 * Math.PI;
-    pose.scale.setScalar(0.8 + 0.4 * hash2(Math.round(x), Math.round(z), seed + 2));
+    pose.scale.setScalar(scale);
     pose.updateMatrix();
     pose.matrix.toArray(matrices.array, i * 16);
   });
@@ -198,7 +200,9 @@ export async function placeScenery(track: Track, heightAt: (x: number, z: number
     const items = candidates(track, heightAt, kind).slice(0, trees ? QUALITY[quality].maxTrees : QUALITY[quality].maxRocks);
     if (trees) {
       const forest = distantTrees(track, heightAt, quality);
-      bakeCanopyShadows([...items, ...forest], track, heightAt);
+      const treesOnTerrain = [...items, ...forest];
+      assignTreeScales(treesOnTerrain, seed);
+      bakeCanopyShadows(treesOnTerrain, track, heightAt);
       console.info('[scenery] trees', items.length, 'distant', forest.length);
       tasks.push(buildDistantForest(track, forest, assets, light));
     }

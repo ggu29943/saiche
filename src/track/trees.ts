@@ -11,13 +11,13 @@ type Patch = [number, number, number, number];
 // Dimensions pair each near model with its corresponding whole-tree cutout.
 const species = {
   tree_a: { height: 9.5, aspect: 389/695, base: 1.8, tiers: 10, boughs: 8, seed: 317,
-    foliage: [0.013, 0.515, 0.487, 0.985], green: '#456143' },
+    foliage: [0.013, 0.515, 0.487, 0.985], needleUV: [.62, .43], green: '#456143' },
   tree_b: { height: 11.6, aspect: 412/695, base: 1.45, tiers: 13, boughs: 6, seed: 521,
-    foliage: [0.513, 0.515, 0.987, 0.985], green: '#48695C' },
+    foliage: [0.513, 0.515, 0.987, 0.985], needleUV: [.63, .31], green: '#48695C' },
   tree_c: { height: 8.8, aspect: 441/695, base: 1.7, tiers: 9, boughs: 7, seed: 733,
-    foliage: [0.013, 0.015, 0.487, 0.485], green: '#4A6244' },
+    foliage: [0.013, 0.015, 0.487, 0.485], needleUV: [.75, .51], green: '#4A6244' },
 } satisfies Record<string, { height: number; aspect: number; base: number; tiers: number;
-  boughs: number; seed: number; foliage: Patch; green: string }>;
+  boughs: number; seed: number; foliage: Patch; needleUV: [number, number]; green: string }>;
 const bark: Patch = [0.515, 0.017, 0.985, 0.480];
 type Species = keyof typeof species;
 
@@ -66,10 +66,10 @@ function crown(center: Point, rx: number, rz: number, depth: number, rng: () => 
   return g;
 }
 
-function sprayCard(width: number, height: number, bend: number, slope: number, twist: number) {
+function sprayCard(width: number, height: number, bend: number, slope: number, twist: number, columns = 2) {
   // Give each spray a curved midsurface. Its outer edge is lowered and swept
   // back, so the branch stays visible as the driver passes it or looks down.
-  const geometry = new THREE.PlaneGeometry(width, height, 2, 1);
+  const geometry = new THREE.PlaneGeometry(width, height, columns, 1);
   const p = geometry.getAttribute('position');
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), y = p.getY(i), u = x/width+0.5, v = y/height;
@@ -110,6 +110,66 @@ function addWhorl(id: Species, add: (g: THREE.BufferGeometry) => void, y: number
   }
 }
 
+function addCrownTip(id: Species, add: (g: THREE.BufferGeometry) => void, base: number, radius: number,
+  withSprays: boolean, rng: () => number) {
+  const form = species[id], depth = form.height - base;
+  const fir = id === 'tree_b', pine = id === 'tree_c';
+  // The terminal shoot is foliage all the way through. Its UVs stay inside
+  // dense needles on the species' branch, clear of the exposed cut end.
+  const core = new THREE.ConeGeometry(radius * .26, depth, 7, 3, true);
+  const pos = core.getAttribute('position'), uv = core.getAttribute('uv');
+  for (let i = 0; i < pos.count; i++) {
+    const t = uv.getY(i), angle = uv.getX(i) * 2 * Math.PI;
+    const ridge = 1 + .16 * Math.sin(3 * angle + t * 3);
+    pos.setXYZ(i, pos.getX(i) * ridge + .045 * radius * t * t, base + t * depth, pos.getZ(i) * ridge);
+    uv.setXY(i, form.needleUV[0] + .045 * Math.cos(angle), form.needleUV[1] + .085 * (t - .5));
+  }
+  core.computeVertexNormals();
+  add(core);
+
+  const tiers = fir ? 9 : 8, boughs = form.boughs + 1;
+  for (let tier = 0; tier < tiers; tier++) {
+    const t = tier / tiers, y = base + depth * t;
+    const spread = 1.14 * radius * (1 - t) ** (pine ? .74 : .86);
+    if (!withSprays) {
+      add(crown([0, y, 0], spread, .94 * spread, depth / tiers * .94, rng));
+      continue;
+    }
+    // Closely spaced whorls overlap the core. Upper shoots turn upward more
+    // steeply, but keep the fir's shelves and the pine's upswept tips.
+    for (let i = 0; i < boughs; i++) {
+      const angle = tier * 2.39996 + (i + .30 * rng()) * 2 * Math.PI / boughs;
+      const reach = spread * (.89 + .20 * rng());
+      const needles = Math.min(depth * (1 - t) * .77, Math.max(depth / tiers, reach * (fir ? .58 : .77)));
+      const twig = sprayCard(reach, needles, 0, 0, reach * .12, 1);
+      twig.translate(-reach * .48, 0, 0);
+      twig.rotateX((i % 2 ? 1 : -1) * (.34 + .24 * rng()));
+      twig.rotateZ((pine ? -.22 : fir ? .05 : .17) - .46 * t + .24 * (rng() - .5));
+      twig.rotateY(angle);
+      add(twig.translate(0, y + (rng() - .5) * .22 * depth / tiers, 0));
+    }
+  }
+  if (withSprays) {
+    // A central bud and four shorter shoots emerge from the last two whorls.
+    // Bend their leafy ends inward, so the outer shoots taper into the apex.
+    const length = depth * .22;
+    for (let i = 0; i < 5; i++) {
+      const rise = i === 0 ? length : length * (.80 + .13 * rng());
+      const shoot = new THREE.PlaneGeometry(1, 1, 2, 1);
+      const points = shoot.getAttribute('position'), tex = shoot.getAttribute('uv');
+      for (let j = 0; j < points.count; j++) {
+        const t = 1 - tex.getX(j), side = tex.getY(j) - .5;
+        const spread = length * .33 * (1 - t) ** .78;
+        points.setXYZ(j, spread * (.70 + .16 * Math.sin(t * Math.PI)), t * rise, spread * side * 1.55);
+        tex.setXY(j, .89 + (form.needleUV[0] - .89) * t, form.needleUV[1] + side * .58 * (1 - t));
+      }
+      shoot.computeVertexNormals();
+      shoot.rotateY(i * 2.39996);
+      add(shoot.translate(.045 * radius, form.height - length, 0));
+    }
+  }
+}
+
 function treeGeometry(id: Species, withSprays: boolean) {
   const form = species[id];
   const rng = mulberry32(form.seed);
@@ -128,12 +188,17 @@ function treeGeometry(id: Species, withSprays: boolean) {
   };
 
   const { height, base, aspect, tiers } = form;
-  add(branch([0, 0, 0], [0, height, 0], 0.20, 0.012), true);
   const tierSpacing = (height - base) / tiers;
-  for (let i = 0; i < tiers; i++) {
+  const tipTier = Math.floor(tiers * .74);
+  // Start the fine whorls below the last broad bough so the upper crown
+  // remains attached when seen in silhouette from the opposite hillside.
+  const overlapTier = tipTier - 1.25, tipBase = base + overlapTier * tierSpacing;
+  const radiusAt = (t: number) => height * aspect * .49 * (1 - t) ** (id === 'tree_c' ? .76 : .92);
+  add(branch([0, 0, 0], [0, tipBase, 0], .20, .045), true);
+  for (let i = 0; i < tipTier; i++) {
     const t = i / tiers;
     const y = base + t * (height - base);
-    const radius = height * aspect * 0.49 * (1 - t) ** (id === 'tree_c' ? 0.76 : 0.92);
+    const radius = radiusAt(t);
     if (withSprays) {
       addWhorl(id, add, y, radius, i, rng);
     } else {
@@ -141,17 +206,7 @@ function treeGeometry(id: Species, withSprays: boolean) {
       add(crown([0, y, 0], radius, radius * 0.94, tierSpacing * 1.18, rng));
     }
   }
-  if (withSprays) {
-    // A short terminal shoot carries the silhouette through the topmost gaps.
-    const shoot = height / 12;
-    for (let i = 0; i < 3; i++) {
-      const tip = sprayCard(shoot, shoot * 0.45, 0, 0, 0);
-      tip.translate(-shoot / 2, 0, 0);
-      tip.rotateZ(-1.40);
-      tip.rotateY(i * Math.PI * 2 / 3);
-      add(tip.translate(0, height - shoot, 0));
-    }
-  }
+  addCrownTip(id, add, tipBase, radiusAt(overlapTier / tiers), withSprays, rng);
   const geometry = mergeGeometries(parts)!;
   for (const part of parts) part.dispose();
   return geometry;
@@ -162,14 +217,25 @@ export function treeSize(name: string) {
 }
 
 export function crossedCard(width: number, height: number) {
-  const card = new THREE.PlaneGeometry(width, height, 2, 2).translate(0, height / 2, 0);
-  // Trim only the empty upper corners of the three existing spruce/fir/pine cutouts.
+  const card = new THREE.PlaneGeometry(width, height, 1, 4);
   const vertices = card.getAttribute('position'), uv = card.getAttribute('uv');
-  for (let i = 0; i < vertices.count; i++) {
-    const taper = 1 - .67 * Math.max(0, uv.getY(i) * 2 - 1);
-    vertices.setX(i, vertices.getX(i) * taper);
-    uv.setX(i, .5 + (uv.getX(i) - .5) * taper);
-  }
+  // Re-project the leafy upper whorls of each photograph into a pointed
+  // silhouette. The final sample is beside the central stem. Both LODs and
+  // medium shadows use this geometry, at the same eight triangles per plane.
+  const rows = [
+    { y: 1,    v: .84,  halfUV: 0,   halfWidth: 0,    centre: .525 },
+    { y: .94,  v: .815, halfUV: .21, halfWidth: .137, centre: .508 },
+    { y: .79,  v: .755, halfUV: .34, halfWidth: .34,  centre: .5 },
+    { y: .54,  v: .54,  halfUV: .5,  halfWidth: .5,   centre: .5 },
+    { y: 0,    v: 0,    halfUV: .5,  halfWidth: .5,   centre: .5 },
+  ];
+  rows.forEach(({ y, v, halfUV, halfWidth, centre }, row) => {
+    for (let side = 0; side < 2; side++) {
+      const i = row * 2 + side, sign = side * 2 - 1;
+      vertices.setXYZ(i, sign * halfWidth * width, y * height, 0);
+      uv.setXY(i, centre + sign * halfUV, v);
+    }
+  });
   const cross = card.clone().rotateY(Math.PI / 2);
   const geometry = mergeGeometries([card, cross])!;
   card.dispose();
